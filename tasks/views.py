@@ -33,15 +33,3 @@ def delete_task(request, task_id):
     task = get_object_or_404(Task, id=task_id)
     task.delete()
     return redirect('index')
-
-
-def trigger_test_crash(request):
-    """
-    Intentionally raises a ZeroDivisionError so Sentry captures a real
-    event and fires the webhook to kick off the full triage pipeline.
-    Remove this view after end-to-end testing is complete.
-    """
-    # Simulate a realistic crash in a task-processing function
-    task_count = Task.objects.filter(completed=False).count()
-    result = 1 / 0  # noqa: intentional ZeroDivisionError for pipeline testing
-    return redirect('index')
