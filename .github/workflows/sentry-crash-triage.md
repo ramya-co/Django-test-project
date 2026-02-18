@@ -1,99 +1,126 @@
 ---
-name: Sentry Crash Triage Agent
-description: >
-  When a Sentry crash is detected, read .github/triage-instructions.md,
-  find the root cause in the codebase, apply a minimal fix, and open a
-  draft PR for human review. Never auto-merge. Never open an issue as output.
 on:
   repository_dispatch:
     types: [sentry-crash]
-engine: copilot
+
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
+
+safe-outputs:
+  create-pull-request:
 ---
 
-# Sentry Crash Triage — Copilot Agent
+# Sentry Crash Auto-Triage
 
-## Overview
+You are a senior Django engineer. A production crash has been detected by Sentry
+and forwarded via `repository_dispatch`. Your job is to **find the root cause,
+apply a minimal targeted fix, and open a draft Pull Request** for human review.
 
-This agentic workflow fires on every `sentry-crash` repository-dispatch event.
-The `client_payload` carries four fields extracted from Sentry:
-
-| Field | Description |
-|-------|-------------|
-| `title` | Human-readable crash title |
-| `culprit` | File + function responsible (e.g. `tasks.views in delete_task`) |
-| `level` | Severity: `fatal` · `error` · `warning` |
-| `url` | Direct link to the Sentry issue for full stack trace |
-
-## Output contract
-
-**Always and only:** open a **draft Pull Request** with the fix.  
-**Never:** open a GitHub Issue, post analysis-only comments, or auto-merge.  
-The human reviewer will mark the PR ready, approve it, and merge it.
+**You must never auto-merge. You must never open a GitHub Issue.**
 
 ---
 
-## Agent Instructions
+## Crash Details
 
-> **Before writing any code, read `.github/triage-instructions.md` in full.**
-> That file contains the project map, code-style guide, culprit-parsing rules,
-> investigation checklist, and the mandatory PR description template.
+The crash payload is in `github.event.client_payload`:
 
-### 1 · Locate the culprit
+- `title` — exception class and message (e.g. `ZeroDivisionError: division by zero`)
+- `culprit` — file and function in Sentry format (e.g. `tasks.views in delete_task`)
+- `level` — severity: `fatal`, `error`, or `warning`
+- `url` — direct link to the Sentry issue
 
-- Parse `client_payload.culprit` using the rules in `triage-instructions.md §2`.
-- Read the full culprit file and find the exact function.
+---
 
-### 2 · Understand the crash
+## Step 1 — Read the project map
 
-Answer before touching code:
-- What operation is failing?
-- What exception / failure mode is triggered?
-- What guard or assumption is missing?
+Read `.github/triage-instructions.md` in full before writing any code.
+It contains the project structure, code-style guide, and the mandatory PR template.
 
-### 3 · Check git history
+---
 
-```bash
-git log --oneline -20 -- <culprit_file>
+## Step 2 — Locate the culprit file
+
+Parse `culprit` from the payload. Sentry format is `module.path in function_name`.
+
+Conversion rule:
+- Replace dots with slashes → append `.py`
+- Example: `tasks.views in delete_task` → file `tasks/views.py`, function `delete_task`
+
+Read the entire culprit file and find the exact function.
+
+---
+
+## Step 3 — Understand the crash
+
+Before writing any code, answer these three questions:
+
+1. What operation is being attempted at the crash site?
+2. What exception type or failure mode occurs?
+3. What guard is missing or what assumption is violated?
+
+---
+
+## Step 4 — Check git history
+
+Run `git log --oneline -15 -- <culprit_file>` on the culprit file.
+Identify any recent commit that removed a guard or changed the logic.
+
+---
+
+## Step 5 — Apply the fix
+
+Rules:
+- Make the **smallest correct change** possible — touch only the crashing function
+- Match the existing code style exactly (see `.github/triage-instructions.md §4`)
+- Do NOT refactor unrelated code, change formatting, or add new dependencies
+- Do NOT modify `webhooks/` or `migrations/` unless the crash originates there
+
+---
+
+## Step 6 — Open a Draft Pull Request
+
+Create a branch named `fix/sentry-<slug>` where `<slug>` is the crash title
+lowercased with spaces and special characters replaced by hyphens (max 55 chars).
+
+The PR **must** be a **draft**. Use this description format exactly:
+
+```
+## 🔴 Sentry Crash Fix
+
+| Field | Value |
+|-------|-------|
+| **Crash** | <title from payload> |
+| **Culprit** | `<culprit from payload>` |
+| **Severity** | <level from payload> |
+| **Sentry URL** | [View crash](<url from payload>) |
+
+## Root Cause
+
+<One clear paragraph: what went wrong, what input triggered it, what guard was missing>
+
+## Fix Applied
+
+<One paragraph: what was changed and why it prevents the crash>
+
+## Changed Files
+
+- `<file>` — <one-line description>
+
+## Before / After
+
+```python
+# Before
+<original code>
+
+# After
+<fixed code>
 ```
 
-Identify any recent commit that may have introduced the regression.
+## Risk Assessment
 
-### 4 · Check for duplicates
+- **Side effects:** <none or describe>
+- **Edge cases covered:** <list>
+```
 
-Search open PRs and issues for the crash title and culprit module keywords.  
-If an open PR already covers this crash, add a comment there and stop.
-
-### 5 · Apply the fix
-
-Follow the fix guidelines in `triage-instructions.md §3–§4`:
-- Minimal, targeted change only.
-- Match existing code style exactly.
-- No unrelated edits.
-
-### 6 · Open a draft PR
-
-Follow `triage-instructions.md §5` exactly:
-
-| Requirement | Detail |
-|-------------|--------|
-| Branch | `fix/sentry-<slug>` from `main` |
-| PR state | **draft** — never mark ready |
-| Title | `fix: <crash title> (Sentry auto-triage)` |
-| Description | Use the full template from `triage-instructions.md §5` |
-| Issue ref | `Closes #<triggering issue number>` |
-| Sentry URL | Must appear in the PR description |
-
----
-
-## Hard rules
-
-- ❌ Do not auto-merge.
-- ❌ Do not open an issue as your output.
-- ❌ Do not modify unrelated files.
-- ✅ PR must reference the Sentry URL from `client_payload.url`.
-- ✅ PR must be a draft until a human approves it.
+Do NOT merge the PR. Leave it as a draft for the human engineer to review, approve, and merge.
 
