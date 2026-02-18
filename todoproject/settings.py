@@ -10,10 +10,16 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from a local .env file (ignored in production).
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -40,6 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'tasks',
+    'webhooks',
 ]
 
 MIDDLEWARE = [
@@ -123,3 +130,10 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── GitHub integration (Sentry crash-triage pipeline) ────────────────────────
+# Set these in your .env file or as real environment variables.
+# Never commit real values to version control.
+GH_PAT = os.environ.get("GH_PAT", "")
+GH_OWNER = os.environ.get("GH_OWNER", "")
+GH_REPO = os.environ.get("GH_REPO", "")

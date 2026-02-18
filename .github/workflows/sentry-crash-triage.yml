@@ -1,0 +1,128 @@
+name: Sentry Crash Triage
+
+# ── Trigger ────────────────────────────────────────────────────────────────
+# Fires when the Django /webhooks/sentry/ view calls GitHub's
+# repository_dispatch API with event_type: "sentry-crash".
+on:
+  repository_dispatch:
+    types: [sentry-crash]
+
+# ── Permissions ────────────────────────────────────────────────────────────
+permissions:
+  contents: write        # checkout + create branches / PRs
+  issues: write          # create / update triage issues
+  pull-requests: write   # open draft PRs
+
+# ── Job ────────────────────────────────────────────────────────────────────
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout so the Copilot agent has access to the codebase ────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so git log works
+
+      # ── 2. Create a structured GitHub Issue with the crash details ─────────
+      #       The issue body contains @github-copilot instructions so the
+      #       Copilot coding agent picks it up automatically.
+      - name: Create crash triage issue
+        id: create-issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const cp      = context.payload.client_payload;
+            const title   = cp.title   || 'Unknown error';
+            const culprit = cp.culprit || 'unknown';
+            const level   = cp.level   || 'error';
+            const url     = cp.url     || '';
+
+            const emoji = { fatal: '🔴', error: '🟠', warning: '🟡' }[level] || '⚪';
+            const sentryLink = url ? '[View in Sentry](' + url + ')' : 'N/A';
+
+            const bodyLines = [
+              '## ' + emoji + ' Sentry Crash — Automated Triage Request',
+              '',
+              '| Field | Value |',
+              '|-------|-------|',
+              '| **Title** | ' + title + ' |',
+              '| **Culprit** | `' + culprit + '` |',
+              '| **Level** | `' + level + '` |',
+              '| **Sentry URL** | ' + sentryLink + ' |',
+              '| **Triggered at** | ' + new Date().toISOString() + ' |',
+              '',
+              '---',
+              '',
+              '## Instructions for the Copilot Agent',
+              '',
+              '@github-copilot Please triage this crash by completing **all** of the following steps in order:',
+              '',
+              '### Step 1 — Find the culprit file',
+              'The culprit field is `' + culprit + '`.',
+              'Parse it (typical Sentry format: `module/path in function_name`) to identify the',
+              'file path and the specific function or method where the crash occurred.',
+              'Read that file and locate the relevant code.',
+              '',
+              '### Step 2 — Understand the crash',
+              'Read the code at the crash location and determine:',
+              '- What operation is being attempted',
+              '- What could cause it to raise an exception or produce incorrect behavior',
+              '- What the most likely exception type or failure mode is',
+              '',
+              '### Step 3 — Check git history',
+              'Run `git log --oneline -10 -- <culprit_file>` on the culprit file.',
+              'Identify whether any recent commit may have introduced a regression.',
+              'Note the relevant commit SHAs and messages.',
+              '',
+              '### Step 4 — Search for existing issues',
+              'Search open GitHub Issues for keywords from the crash title and culprit module.',
+              'If a duplicate already exists, add a comment there with the new Sentry URL',
+              'instead of proceeding with a new issue.',
+              '',
+              '### Step 5 — Take action (choose one)',
+              '',
+              '**If the fix is simple** (missing null-check, unhandled edge case, trivial off-by-one):',
+              '- Create branch `fix/sentry-crash`',
+              '- Apply the minimal, targeted fix',
+              '- Open a **draft Pull Request** with:',
+              '  - Title: `fix: ' + title + '`',
+              '  - Body: root cause, one-line explanation of the fix, and a link back to this issue',
+              '',
+              '**If the fix is complex** (race condition, architectural problem, requires design decision):',
+              '- Update **this issue** with a full triage analysis:',
+              '  - Root cause (file path + line numbers)',
+              '  - Affected code snippet (fenced code block)',
+              '  - Inferred reproduction steps',
+              '  - Recommended fix approach with pros/cons',
+              '  - Any related areas of the codebase that may be affected',
+            ];
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: '[Crash Triage] ' + title,
+              body:  bodyLines.join('\n'),
+              labels: ['bug', 'crash-triage'],
+            });
+
+            core.notice('✅ Triage issue #' + issue.data.number + ': ' + issue.data.html_url);
+            core.setOutput('issue_number', String(issue.data.number));
+            core.setOutput('issue_url',    issue.data.html_url);
+
+      # ── 3. Write a workflow summary ────────────────────────────────────────
+      - name: Write job summary
+        run: |
+          {
+            echo "## 🔴 Sentry Crash Triage — Workflow Summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Title   | ${{ github.event.client_payload.title }} |"
+            echo "| Culprit | \`${{ github.event.client_payload.culprit }}\` |"
+            echo "| Level   | ${{ github.event.client_payload.level }} |"
+            echo "| Sentry  | ${{ github.event.client_payload.url }} |"
+            echo "| Issue   | ${{ steps.create-issue.outputs.issue_url }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
