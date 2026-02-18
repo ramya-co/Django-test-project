@@ -230,6 +230,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    concurrency:
+      group: "gh-aw-copilot-${{ github.workflow }}"
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       GH_AW_ASSETS_ALLOWED_EXTS: ""
@@ -907,6 +909,8 @@ jobs:
     if: needs.agent.outputs.output_types != '' || needs.agent.outputs.has_patch == 'true'
     runs-on: ubuntu-latest
     permissions: {}
+    concurrency:
+      group: "gh-aw-copilot-${{ github.workflow }}"
     timeout-minutes: 10
     outputs:
       success: ${{ steps.parse_results.outputs.success }}
@@ -1036,6 +1040,7 @@ jobs:
       pull-requests: write
     timeout-minutes: 15
     env:
+      GH_AW_ENGINE_ID: "copilot"
       GH_AW_WORKFLOW_ID: "sentry-crash-triage"
       GH_AW_WORKFLOW_NAME: "Sentry Crash Auto-Triage"
     outputs:
