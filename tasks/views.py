@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 from .models import Task
 
 def index(request):
@@ -7,14 +7,15 @@ def index(request):
     tasks = Task.objects.all()
     return render(request, 'tasks/index.html', {'tasks': tasks})
 
+@require_POST
 def add_task(request):
     """Add a new task"""
-    if request.method == 'POST':
-        title = request.POST.get('title')
-        if title:
-            Task.objects.create(title=title)
+    title = request.POST.get('title', '').strip()
+    if title:
+        Task.objects.create(title=title)
     return redirect('index')
 
+@require_POST
 def toggle_task(request, task_id):
     """Mark a task as complete or incomplete"""
     task = get_object_or_404(Task, id=task_id)
@@ -22,6 +23,7 @@ def toggle_task(request, task_id):
     task.save()
     return redirect('index')
 
+@require_POST
 def delete_task(request, task_id):
     """Delete a task"""
     task = get_object_or_404(Task, id=task_id)
