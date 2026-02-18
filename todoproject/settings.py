@@ -137,3 +137,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 GH_PAT = os.environ.get("GH_PAT", "")
 GH_OWNER = os.environ.get("GH_OWNER", "")
 GH_REPO = os.environ.get("GH_REPO", "")
+
+# ── Sentry SDK (crash monitoring) ────────────────────────────────────────────
+# Set SENTRY_DSN in your .env file. Leave blank to disable Sentry locally.
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        # Capture 100 % of transactions in dev; tune down in production.
+        traces_sample_rate=1.0,
+        # Associate the logged-in Django user with every error event.
+        send_default_pii=True,
+    )

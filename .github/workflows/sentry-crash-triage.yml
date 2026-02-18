@@ -1,7 +1,7 @@
 name: Sentry Crash Triage
 
 # ── Trigger ────────────────────────────────────────────────────────────────
-# Fires when the Django /webhooks/sentry/ view calls GitHub's
+# Fires when the Django /webhooks/sentry/ view POSTs to GitHub's
 # repository_dispatch API with event_type: "sentry-crash".
 on:
   repository_dispatch:
@@ -9,26 +9,22 @@ on:
 
 # ── Permissions ────────────────────────────────────────────────────────────
 permissions:
-  contents: write        # checkout + create branches / PRs
-  issues: write          # create / update triage issues
-  pull-requests: write   # open draft PRs
+  contents: write        # Copilot agent: create fix branch
+  issues: write          # create the Copilot task-issue
+  pull-requests: write   # Copilot agent: open the draft PR
 
 # ── Job ────────────────────────────────────────────────────────────────────
 jobs:
-  triage:
+  dispatch-to-copilot:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout so the Copilot agent has access to the codebase ────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # full history so git log works
-
-      # ── 2. Create a structured GitHub Issue with the crash details ─────────
-      #       The issue body contains @github-copilot instructions so the
-      #       Copilot coding agent picks it up automatically.
-      - name: Create crash triage issue
+      # ── Create a Copilot task-issue ───────────────────────────────────────
+      # The issue is the task brief for the Copilot coding agent.
+      # The agent reads .github/triage-instructions.md, applies the fix,
+      # and opens a DRAFT PR. Human reviews, approves, and merges.
+      # There is NO auto-merge and NO fallback analysis-issue output.
+      - name: Create Copilot fix-task issue
         id: create-issue
         uses: actions/github-script@v7
         with:
@@ -40,83 +36,72 @@ jobs:
             const level   = cp.level   || 'error';
             const url     = cp.url     || '';
 
-            const emoji = { fatal: '🔴', error: '🟠', warning: '🟡' }[level] || '⚪';
-            const sentryLink = url ? '[View in Sentry](' + url + ')' : 'N/A';
+            const emoji      = { fatal: '🔴', error: '🟠', warning: '🟡' }[level] ?? '⚪';
+            const sentryLink = url ? `[View in Sentry](${url})` : '_not provided_';
+            const triggeredAt = new Date().toISOString();
 
-            const bodyLines = [
-              '## ' + emoji + ' Sentry Crash — Automated Triage Request',
+            // Slugify crash title for a readable branch name suggestion
+            const slug = title
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '')
+              .slice(0, 55);
+
+            const body = [
+              `## ${emoji} Sentry Crash — Fix Request`,
               '',
               '| Field | Value |',
               '|-------|-------|',
-              '| **Title** | ' + title + ' |',
-              '| **Culprit** | `' + culprit + '` |',
-              '| **Level** | `' + level + '` |',
-              '| **Sentry URL** | ' + sentryLink + ' |',
-              '| **Triggered at** | ' + new Date().toISOString() + ' |',
+              `| **Title**       | ${title} |`,
+              `| **Culprit**     | \`${culprit}\` |`,
+              `| **Level**       | \`${level}\` |`,
+              `| **Sentry URL**  | ${sentryLink} |`,
+              `| **Detected at** | ${triggeredAt} |`,
               '',
               '---',
               '',
-              '## Instructions for the Copilot Agent',
+              '## Task for @github-copilot',
               '',
-              '@github-copilot Please triage this crash by completing **all** of the following steps in order:',
+              `@github-copilot A production crash has been detected. Your task is to **fix it and open a draft Pull Request** targeting \`main\`. Do not open any issue as output.`,
               '',
-              '### Step 1 — Find the culprit file',
-              'The culprit field is `' + culprit + '`.',
-              'Parse it (typical Sentry format: `module/path in function_name`) to identify the',
-              'file path and the specific function or method where the crash occurred.',
-              'Read that file and locate the relevant code.',
+              '**Please complete the following steps in order:**',
               '',
-              '### Step 2 — Understand the crash',
-              'Read the code at the crash location and determine:',
-              '- What operation is being attempted',
-              '- What could cause it to raise an exception or produce incorrect behavior',
-              '- What the most likely exception type or failure mode is',
+              '1. Read `.github/triage-instructions.md` — it contains the full investigation playbook, this project\'s code map, style guide, and the mandatory PR description template.',
+              `2. Locate the culprit code: \`${culprit}\`.`,
+              '3. Follow every investigation step in the playbook (understand crash → check git history → check existing PRs → apply minimal fix).',
+              `4. Open a **draft PR** from branch \`fix/sentry-${slug}\` targeting \`main\`.`,
+              `5. Use the PR description template from \`.github/triage-instructions.md\` — include the Sentry URL and \`Closes #<this issue number>\`.`,
               '',
-              '### Step 3 — Check git history',
-              'Run `git log --oneline -10 -- <culprit_file>` on the culprit file.',
-              'Identify whether any recent commit may have introduced a regression.',
-              'Note the relevant commit SHAs and messages.',
-              '',
-              '### Step 4 — Search for existing issues',
-              'Search open GitHub Issues for keywords from the crash title and culprit module.',
-              'If a duplicate already exists, add a comment there with the new Sentry URL',
-              'instead of proceeding with a new issue.',
-              '',
-              '### Step 5 — Take action (choose one)',
-              '',
-              '**If the fix is simple** (missing null-check, unhandled edge case, trivial off-by-one):',
-              '- Create branch `fix/sentry-crash`',
-              '- Apply the minimal, targeted fix',
-              '- Open a **draft Pull Request** with:',
-              '  - Title: `fix: ' + title + '`',
-              '  - Body: root cause, one-line explanation of the fix, and a link back to this issue',
-              '',
-              '**If the fix is complex** (race condition, architectural problem, requires design decision):',
-              '- Update **this issue** with a full triage analysis:',
-              '  - Root cause (file path + line numbers)',
-              '  - Affected code snippet (fenced code block)',
-              '  - Inferred reproduction steps',
-              '  - Recommended fix approach with pros/cons',
-              '  - Any related areas of the codebase that may be affected',
-            ];
+              '> ⚠️ **Do not auto-merge.** The PR must remain a draft until the human reviewer approves it.',
+            ].join('\n');
+
+            // Ensure labels exist (ignore 422 if already present)
+            for (const lbl of [
+              { name: 'crash-fix', color: 'e11d48', description: 'Automated crash fix task for Copilot agent' },
+              { name: 'copilot',   color: '6366f1', description: 'Assigned to GitHub Copilot coding agent'     },
+            ]) {
+              try {
+                await github.rest.issues.createLabel({ owner: context.repo.owner, repo: context.repo.repo, ...lbl });
+              } catch (_) {}
+            }
 
             const issue = await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              title: '[Crash Triage] ' + title,
-              body:  bodyLines.join('\n'),
-              labels: ['bug', 'crash-triage'],
+              owner:  context.repo.owner,
+              repo:   context.repo.repo,
+              title:  `[Fix Request] ${title}`,
+              body,
+              labels: ['crash-fix', 'copilot'],
             });
 
-            core.notice('✅ Triage issue #' + issue.data.number + ': ' + issue.data.html_url);
+            core.notice(`✅ Copilot task issue #${issue.data.number}: ${issue.data.html_url}`);
             core.setOutput('issue_number', String(issue.data.number));
             core.setOutput('issue_url',    issue.data.html_url);
 
-      # ── 3. Write a workflow summary ────────────────────────────────────────
+      # ── Write workflow summary ────────────────────────────────────────────
       - name: Write job summary
         run: |
           {
-            echo "## 🔴 Sentry Crash Triage — Workflow Summary"
+            echo "## 🔴 Sentry Crash — Dispatched to Copilot"
             echo ""
             echo "| Field | Value |"
             echo "|-------|-------|"
@@ -124,5 +109,8 @@ jobs:
             echo "| Culprit | \`${{ github.event.client_payload.culprit }}\` |"
             echo "| Level   | ${{ github.event.client_payload.level }} |"
             echo "| Sentry  | ${{ github.event.client_payload.url }} |"
-            echo "| Issue   | ${{ steps.create-issue.outputs.issue_url }} |"
+            echo "| Task Issue | ${{ steps.create-issue.outputs.issue_url }} |"
+            echo ""
+            echo "Copilot is working on a fix. A draft PR will appear shortly."
+            echo "Review → Approve → Merge when ready."
           } >> "$GITHUB_STEP_SUMMARY"
