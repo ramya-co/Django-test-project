@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_POST
 from .models import Task
 
 def index(request):
