@@ -6,4 +6,6 @@ urlpatterns = [
     path('add/', views.add_task, name='add_task'),
     path('toggle/<int:task_id>/', views.toggle_task, name='toggle_task'),
     path('delete/<int:task_id>/', views.delete_task, name='delete_task'),
+    # Intentional crash endpoint — remove after pipeline testing is done
+    path('debug-crash/', views.trigger_test_crash, name='trigger_test_crash'),
 ]

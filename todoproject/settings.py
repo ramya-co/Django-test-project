@@ -33,7 +33,12 @@ SECRET_KEY = 'django-insecure-a&ip1)*$ou9vnae_^q7a1#l#(td=k9)&&p=4e6kcva*qxayvj$
 # For production: Set DEBUG = False and configure ALLOWED_HOSTS
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.ngrok-free.app',   # allows all ngrok tunnel subdomains
+    '.ngrok.io',
+]
 
 
 # Application definition
@@ -137,6 +142,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 GH_PAT = os.environ.get("GH_PAT", "")
 GH_OWNER = os.environ.get("GH_OWNER", "")
 GH_REPO = os.environ.get("GH_REPO", "")
+
+# Sentry client secret — used to verify incoming webhook signatures
+SENTRY_CLIENT_SECRET = os.environ.get("SENTRY_CLIENT_SECRET", "")
 
 # ── Sentry SDK (crash monitoring) ────────────────────────────────────────────
 # Set SENTRY_DSN in your .env file. Leave blank to disable Sentry locally.
