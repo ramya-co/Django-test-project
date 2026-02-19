@@ -1,0 +1,83 @@
+{% extends "tasks/base.html" %}
+
+{% block title %}Filter Tasks{% endblock %}
+
+{% block extra_css %}
+<style>
+    .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: #667eea;
+        text-decoration: none;
+        font-size: 15px;
+        font-weight: 500;
+    }
+    .back-link:hover { text-decoration: underline; }
+
+    .filter-bar {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 24px;
+    }
+    .filter-btn {
+        padding: 8px 20px;
+        border-radius: 20px;
+        border: 2px solid #667eea;
+        background: white;
+        color: #667eea;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+    .filter-btn:hover, .filter-btn.active {
+        background: #667eea;
+        color: white;
+    }
+    .result-count {
+        text-align: center;
+        color: #888;
+        margin-bottom: 16px;
+        font-size: 14px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>🔍 Filter Tasks</h1>
+
+<a href="{% url 'index' %}" class="back-link">← Back to tasks</a>
+
+<div class="filter-bar">
+    <a href="?status=all" class="filter-btn {% if current_status == 'all' %}active{% endif %}">All</a>
+    <a href="?status=active" class="filter-btn {% if current_status == 'active' %}active{% endif %}">Active</a>
+    <a href="?status=done" class="filter-btn {% if current_status == 'done' %}active{% endif %}">Done</a>
+    <a href="?status=pending" class="filter-btn {% if current_status == 'pending' %}active{% endif %}">Pending</a>
+</div>
+
+<p class="result-count">{{ tasks|length }} task{{ tasks|length|pluralize }} found</p>
+
+{% if tasks %}
+<ul class="task-list">
+    {% for task in tasks %}
+    <li class="task-item {% if task.completed %}completed{% endif %}">
+        <span class="task-title">{{ task.title }}</span>
+        <div class="task-actions">
+            <form method="post" action="{% url 'toggle_task' task.id %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-toggle">
+                    {% if task.completed %}Undo{% else %}Done{% endif %}
+                </button>
+            </form>
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<div class="empty-state">
+    <p>No tasks match this filter.</p>
+</div>
+{% endif %}
+{% endblock %}

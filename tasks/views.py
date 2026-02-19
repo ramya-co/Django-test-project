@@ -67,3 +67,27 @@ def task_report(request):
     }
 
     return render(request, 'tasks/report.html', {'stats': stats})
+
+
+def filter_tasks(request):
+    """Filter tasks by status: all, active, or done."""
+    status = request.GET.get('status', 'all')
+
+    status_map = {
+        'all': None,
+        'active': False,
+        'done': True,
+    }
+
+    # Look up the filter value for the requested status
+    is_completed = status_map[status]
+
+    if is_completed is None:
+        tasks = Task.objects.all()
+    else:
+        tasks = Task.objects.filter(completed=is_completed)
+
+    return render(request, 'tasks/filter.html', {
+        'tasks': tasks,
+        'current_status': status,
+    })
