@@ -22,12 +22,15 @@ apply a minimal targeted fix, and open a draft Pull Request** for human review.
 
 ## Crash Details
 
-The crash payload is in `github.event.client_payload`:
+Here are the exact crash details from the Sentry webhook:
 
-- `title` — exception class and message (e.g. `ZeroDivisionError: division by zero`)
-- `culprit` — file and function in Sentry format (e.g. `tasks.views in delete_task`)
-- `level` — severity: `fatal`, `error`, or `warning`
-- `url` — direct link to the Sentry issue
+- **Title:** `${{ github.event.client_payload.title }}`
+- **Culprit:** `${{ github.event.client_payload.culprit }}`
+- **Level:** `${{ github.event.client_payload.level }}`
+- **Sentry URL:** ${{ github.event.client_payload.url }}
+
+Use the **culprit** field to find the file and function that crashed.
+Use the **title** field to understand the exception type and message.
 
 ---
 
