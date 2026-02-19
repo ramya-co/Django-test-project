@@ -1,0 +1,18 @@
+{% extends "tasks/base.html" %}
+
+{% block content %}
+<h1>📊 Task Statistics</h1>
+
+<div style="max-width: 400px; margin: 20px auto; text-align: left; background: #f9f9f9; padding: 20px; border-radius: 8px;">
+    <p><strong>Total Tasks:</strong> {{ stats.total }}</p>
+    <p><strong>Completed:</strong> {{ stats.completed }}</p>
+    <p><strong>Pending:</strong> {{ stats.pending }}</p>
+    <hr>
+    <p><strong>Oldest Task:</strong> {{ stats.oldest_task }}</p>
+    <p><strong>Newest Task:</strong> {{ stats.newest_task }}</p>
+</div>
+
+<div style="text-align: center; margin-top: 20px;">
+    <a href="{% url 'index' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">← Back to Tasks</a>
+</div>
+{% endblock %}

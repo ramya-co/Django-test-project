@@ -60,6 +60,22 @@ def export_tasks_csv(request):
     return response
 
 
+def task_stats(request):
+    """Show task completion statistics and summary."""
+    tasks = list(Task.objects.all().order_by('created_at'))
+    completed = [t for t in tasks if t.completed]
+
+    stats = {
+        'total': len(tasks),
+        'completed': len(completed),
+        'pending': len(tasks) - len(completed),
+        'oldest_task': tasks[0].title,
+        'newest_task': tasks[-1].title,
+    }
+
+    return render(request, 'tasks/stats.html', {'stats': stats})
+
+
 def edit_task(request, task_id):
     """Edit a task's title via inline form."""
     task = get_object_or_404(Task, id=task_id)

@@ -5,6 +5,8 @@
 
 <div style="text-align: center; margin-bottom: 10px;">
     <a href="{% url 'export_tasks_csv' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">📥 Export as CSV</a>
+    &nbsp;|&nbsp;
+    <a href="{% url 'task_stats' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">📊 Task Stats</a>
 </div>
 
 <form method="post" action="{% url 'add_task' %}" class="add-task-form">
