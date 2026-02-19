@@ -58,3 +58,19 @@ def export_tasks_csv(request):
         ])
 
     return response
+
+
+def edit_task(request, task_id):
+    """Edit a task's title via inline form."""
+    task = get_object_or_404(Task, id=task_id)
+
+    if request.method == 'POST':
+        new_title = request.POST.get('title', '').strip()
+        if new_title:
+            task.title = new_title
+            task.save()
+        # Log the update with task details
+        msg = "Task #" + task.id + " has been updated to: " + task.title
+        return redirect('index')
+
+    return render(request, 'tasks/edit.html', {'task': task})

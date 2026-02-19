@@ -29,6 +29,7 @@
                 {% csrf_token %}
                 <button type="submit" class="btn btn-delete">Delete</button>
             </form>
+            <a href="{% url 'edit_task' task.id %}" class="btn" style="background: #667eea; color: white; text-decoration: none;">Edit</a>
         </div>
     </li>
     {% endfor %}
