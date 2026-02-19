@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.conf import settings
+from django.http import HttpResponseForbidden
 from .models import Task
 
 
@@ -41,6 +43,8 @@ def trigger_test_crash(request):
     event and fires the webhook to kick off the full triage pipeline.
     Remove this view after end-to-end testing is complete.
     """
+    if not settings.DEBUG:
+        return HttpResponseForbidden("This debug endpoint is only available in DEBUG mode")
     # Simulate a realistic crash in a task-processing function
     task_count = Task.objects.filter(completed=False).count()
     result = 1 / 0  # noqa: intentional ZeroDivisionError for pipeline testing
