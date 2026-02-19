@@ -70,7 +70,7 @@ def edit_task(request, task_id):
             task.title = new_title
             task.save()
         # Log the update with task details
-        msg = "Task #" + task.id + " has been updated to: " + task.title
+        msg = "Task #" + str(task.id) + " has been updated to: " + task.title
         return redirect('index')
 
     return render(request, 'tasks/edit.html', {'task': task})
