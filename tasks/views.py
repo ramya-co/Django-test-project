@@ -46,14 +46,13 @@ def export_tasks_csv(request):
     response['Content-Disposition'] = 'attachment; filename="tasks.csv"'
 
     writer = csv.writer(response)
-    writer.writerow(['ID', 'Title', 'Completed', 'Priority', 'Created'])
+    writer.writerow(['ID', 'Title', 'Completed', 'Created'])
 
     for task in tasks:
         writer.writerow([
             task.id,
             task.title,
             task.completed,
-            task.priority.upper(),
             task.created_at.strftime('%Y-%m-%d %H:%M'),
         ])
 
