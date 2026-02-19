@@ -1,7 +1,20 @@
 ---
 on:
-  repository_dispatch:
-    types: [sentry-crash]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: "Crash title from Sentry (e.g. KeyError: 'pending')"
+        required: true
+      culprit:
+        description: "Culprit from Sentry (e.g. tasks.views in filter_tasks)"
+        required: true
+      level:
+        description: "Severity level (fatal, error, warning)"
+        required: true
+        default: "error"
+      url:
+        description: "Direct link to the Sentry issue"
+        required: true
 
 permissions:
   contents: read
@@ -13,7 +26,7 @@ safe-outputs:
 # Sentry Crash Auto-Triage
 
 You are a senior Django engineer. A production crash has been detected by Sentry
-and forwarded via `repository_dispatch`. Your job is to **find the root cause,
+and forwarded via `workflow_dispatch`. Your job is to **find the root cause,
 apply a minimal targeted fix, and open a draft Pull Request** for human review.
 
 **You must never auto-merge. You must never open a GitHub Issue.**
@@ -24,10 +37,10 @@ apply a minimal targeted fix, and open a draft Pull Request** for human review.
 
 Here are the exact crash details from the Sentry webhook:
 
-- **Title:** `${{ github.event.client_payload.title }}`
-- **Culprit:** `${{ github.event.client_payload.culprit }}`
-- **Level:** `${{ github.event.client_payload.level }}`
-- **Sentry URL:** ${{ github.event.client_payload.url }}
+- **Title:** `${{ github.event.inputs.title }}`
+- **Culprit:** `${{ github.event.inputs.culprit }}`
+- **Level:** `${{ github.event.inputs.level }}`
+- **Sentry URL:** ${{ github.event.inputs.url }}
 
 Use the **culprit** field to find the file and function that crashed.
 Use the **title** field to understand the exception type and message.

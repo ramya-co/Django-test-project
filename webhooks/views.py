@@ -111,13 +111,15 @@ def sentry_webhook(request):
             status=500,
         )
 
-    # ── 5. Forward to GitHub repository_dispatch ──────────────────────────────
+    # ── 5. Forward to GitHub workflow_dispatch ──────────────────────────────
+    workflow_file = "sentry-crash-triage.lock.yml"
     dispatch_url = (
-        f"https://api.github.com/repos/{gh_owner}/{gh_repo}/dispatches"
+        f"https://api.github.com/repos/{gh_owner}/{gh_repo}"
+        f"/actions/workflows/{workflow_file}/dispatches"
     )
     dispatch_payload = {
-        "event_type": "sentry-crash",
-        "client_payload": {
+        "ref": "main",
+        "inputs": {
             "title": title,
             "culprit": culprit,
             "level": level,
