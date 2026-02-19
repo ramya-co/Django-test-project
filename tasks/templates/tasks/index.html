@@ -4,9 +4,7 @@
 <h1>📋 My To-Do List</h1>
 
 <div style="text-align: center; margin-bottom: 10px;">
-    <a href="{% url 'task_report' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">📊 View Productivity Report</a>
-    &nbsp;·&nbsp;
-    <a href="{% url 'filter_tasks' %}?status=all" style="color: #667eea; text-decoration: none; font-weight: 500;">🔍 Filter Tasks</a>
+    <a href="{% url 'export_tasks_csv' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">📥 Export as CSV</a>
 </div>
 
 <form method="post" action="{% url 'add_task' %}" class="add-task-form">

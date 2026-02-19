@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.http import HttpResponse
 from .models import Task
 
 
@@ -35,59 +36,25 @@ def delete_task(request, task_id):
     return redirect('index')
 
 
-def task_report(request):
-    """
-    Generate a productivity report with task completion statistics,
-    including average completion time and daily throughput.
-    """
-    tasks = list(Task.objects.all())
+def export_tasks_csv(request):
+    """Export all tasks to a downloadable CSV file."""
+    import csv
 
-    if not tasks:
-        return render(request, 'tasks/report.html', {'stats': None})
+    tasks = Task.objects.all()
 
-    total = len(tasks)
-    completed = [t for t in tasks if t.completed]
-    pending = [t for t in tasks if not t.completed]
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="tasks.csv"'
 
-    # Calculate average completion time in hours for finished tasks
-    avg_completion_hours = 0
-    if completed:
-        from django.utils import timezone
-        avg_completion_hours = sum(
-            (t.completed_at - t.created_at).total_seconds() / 3600
-            for t in completed
-        ) / len(completed)
+    writer = csv.writer(response)
+    writer.writerow(['ID', 'Title', 'Completed', 'Priority', 'Created'])
 
-    stats = {
-        'total': total,
-        'completed_count': len(completed),
-        'pending_count': len(pending),
-        'completion_rate': round(len(completed) / total * 100, 1),
-        'avg_completion_hours': round(avg_completion_hours, 1),
-    }
+    for task in tasks:
+        writer.writerow([
+            task.id,
+            task.title,
+            task.completed,
+            task.priority.upper(),
+            task.created_at.strftime('%Y-%m-%d %H:%M'),
+        ])
 
-    return render(request, 'tasks/report.html', {'stats': stats})
-
-
-def filter_tasks(request):
-    """Filter tasks by status: all, active, or done."""
-    status = request.GET.get('status', 'all')
-
-    status_map = {
-        'all': None,
-        'active': False,
-        'done': True,
-    }
-
-    # Look up the filter value for the requested status
-    is_completed = status_map[status]
-
-    if is_completed is None:
-        tasks = Task.objects.all()
-    else:
-        tasks = Task.objects.filter(completed=is_completed)
-
-    return render(request, 'tasks/filter.html', {
-        'tasks': tasks,
-        'current_status': status,
-    })
+    return response
