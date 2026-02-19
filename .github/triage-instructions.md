@@ -21,11 +21,11 @@ Django-test-project/
 │   └── asgi.py
 ├── tasks/                      ← the Todo-list application
 │   ├── models.py               ← Task(id, title:str, completed:bool, created_at:datetime)
-│   ├── views.py                ← index, add_task, toggle_task, delete_task
-│   ├── urls.py                 ← '', 'add/', 'toggle/<id>/', 'delete/<id>/'
+│   ├── views.py                ← index, add_task, toggle_task, delete_task, task_report, filter_tasks
+│   ├── urls.py                 ← '', 'add/', 'toggle/<id>/', 'delete/<id>/', 'report/', 'filter/'
 │   ├── admin.py
 │   ├── migrations/
-│   └── templates/tasks/        ← base.html, index.html
+│   └── templates/tasks/        ← base.html, index.html, report.html, filter.html
 └── webhooks/                   ← Sentry → GitHub bridge (do not modify unless the crash is here)
     ├── views.py                ← sentry_webhook: receives Sentry payload, dispatches to GitHub
     └── urls.py                 ← 'sentry/'
