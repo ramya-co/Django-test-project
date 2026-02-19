@@ -35,13 +35,35 @@ def delete_task(request, task_id):
     return redirect('index')
 
 
-def trigger_test_crash(request):
+def task_report(request):
     """
-    Intentionally raises a ZeroDivisionError so Sentry captures a real
-    event and fires the webhook to kick off the full triage pipeline.
-    Remove this view after end-to-end testing is complete.
+    Generate a productivity report with task completion statistics,
+    including average completion time and daily throughput.
     """
-    # Simulate a realistic crash in a task-processing function
-    task_count = Task.objects.filter(completed=False).count()
-    result = 1 / 0  # noqa: intentional ZeroDivisionError for pipeline testing
-    return redirect('index')
+    tasks = list(Task.objects.all())
+
+    if not tasks:
+        return render(request, 'tasks/report.html', {'stats': None})
+
+    total = len(tasks)
+    completed = [t for t in tasks if t.completed]
+    pending = [t for t in tasks if not t.completed]
+
+    # Calculate average completion time in hours for finished tasks
+    avg_completion_hours = 0
+    if completed:
+        from django.utils import timezone
+        avg_completion_hours = sum(
+            (t.completed_at - t.created_at).total_seconds() / 3600
+            for t in completed
+        ) / len(completed)
+
+    stats = {
+        'total': total,
+        'completed_count': len(completed),
+        'pending_count': len(pending),
+        'completion_rate': round(len(completed) / total * 100, 1),
+        'avg_completion_hours': round(avg_completion_hours, 1),
+    }
+
+    return render(request, 'tasks/report.html', {'stats': stats})
