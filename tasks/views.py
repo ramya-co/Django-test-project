@@ -69,8 +69,8 @@ def task_stats(request):
         'total': len(tasks),
         'completed': len(completed),
         'pending': len(tasks) - len(completed),
-        'oldest_task': tasks[0].title,
-        'newest_task': tasks[-1].title,
+        'oldest_task': tasks[0].title if tasks else None,
+        'newest_task': tasks[-1].title if tasks else None,
     }
 
     return render(request, 'tasks/stats.html', {'stats': stats})
