@@ -43,7 +43,11 @@ def search_tasks(request):
 
     if query:
         # Search by ID and by title at the same time
-        task_id = int(query)
-        results = Task.objects.filter(id=task_id) | Task.objects.filter(title__icontains=query)
+        try:
+            task_id = int(query)
+            results = Task.objects.filter(id=task_id) | Task.objects.filter(title__icontains=query)
+        except ValueError:
+            # Query is not a valid integer, search by title only
+            results = Task.objects.filter(title__icontains=query)
 
     return render(request, 'tasks/search.html', {'results': results, 'query': query})
