@@ -38,7 +38,7 @@ def delete_task(request, task_id):
 
 def search_tasks(request):
     """Search tasks by title or task ID."""
-    query = request.GET.get('q', '')
+    query = request.GET['q']   # KeyError if ?q is absent
     results = []
 
     if query:
