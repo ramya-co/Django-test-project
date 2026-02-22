@@ -22,7 +22,7 @@
 # For more information: https://github.github.com/gh-aw/introduction/overview/
 #
 #
-# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"0a9d3233e9597d3815fd04b4c3edd491e91f35b08a00053e6924d8a51f26a9a7"}
+# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"df04a0bb8f55b853b2fdc62db4b2c0a854b0a7419da435190cbe4c3c156e7067"}
 
 name: "Sentry Crash Auto-Triage"
 "on":
@@ -1035,6 +1035,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_REQUIRED_ROLES: admin,maintainer,write
+          GH_AW_ALLOWED_BOTS: sentry-io[bot],sentry[bot]
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

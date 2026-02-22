@@ -5,6 +5,10 @@ on:
 
 engine: copilot
 
+bots:
+  - sentry-io[bot]
+  - sentry[bot]
+
 permissions:
   contents: read
   issues: read
