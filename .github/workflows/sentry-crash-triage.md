@@ -1,23 +1,14 @@
 ---
 on:
-  workflow_dispatch:
-    inputs:
-      title:
-        description: "Crash title from Sentry (e.g. KeyError: 'pending')"
-        required: true
-      culprit:
-        description: "Culprit from Sentry (e.g. tasks.views in filter_tasks)"
-        required: true
-      level:
-        description: "Severity level (fatal, error, warning)"
-        required: true
-        default: "error"
-      url:
-        description: "Direct link to the Sentry issue"
-        required: true
+  issues:
+    types: [opened]
+
+engine: copilot
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 safe-outputs:
   create-pull-request:
@@ -26,47 +17,64 @@ safe-outputs:
 # Sentry Crash Auto-Triage
 
 You are a senior Django engineer. A production crash has been detected by Sentry
-and forwarded via `workflow_dispatch`. Your job is to **find the root cause,
-apply a minimal targeted fix, and open a draft Pull Request** for human review.
+and reported as a GitHub Issue by the Sentry GitHub integration. Your job is to
+**find the root cause, apply a minimal targeted fix, and open a draft Pull
+Request** for human review.
 
-**You must never auto-merge. You must never open a GitHub Issue.**
-
----
-
-## Crash Details
-
-Here are the exact crash details from the Sentry webhook:
-
-- **Title:** `${{ github.event.inputs.title }}`
-- **Culprit:** `${{ github.event.inputs.culprit }}`
-- **Level:** `${{ github.event.inputs.level }}`
-- **Sentry URL:** ${{ github.event.inputs.url }}
-
-Use the **culprit** field to find the file and function that crashed.
-Use the **title** field to understand the exception type and message.
+**You must never auto-merge. You must never open a new GitHub Issue as output.**
 
 ---
 
-## Step 1 — Read the project map
+## Step 0 — Verify this issue came from Sentry
 
-Read `.github/triage-instructions.md` in full before writing any code.
-It contains the project structure, code-style guide, and the mandatory PR template.
+Check the workflow actor: `${{ github.actor }}`.
+
+- If the actor is **not** `sentry-io[bot]` and does **not** contain the string
+  `sentry` (case-insensitive), output the message:
+  `"Issue not from Sentry bot — exiting gracefully."` and **stop immediately**.
+  Do not make any file changes or open any PR.
+- Otherwise continue to Step 1.
 
 ---
 
-## Step 2 — Locate the culprit file
+## Step 1 — Read the project playbook
 
-Parse `culprit` from the payload. Sentry format is `module.path in function_name`.
+Read `.github/triage-instructions.md` in full **before** writing any code.
+It contains the project structure, code-style guide, culprit-parsing rules, and
+the mandatory PR template.
 
-Conversion rule:
-- Replace dots with slashes → append `.py`
-- Example: `tasks.views in delete_task` → file `tasks/views.py`, function `delete_task`
+---
+
+## Step 2 — Extract crash details from the issue
+
+The issue was created automatically by Sentry's GitHub integration. Use your
+GitHub tools to fetch the full body of issue number
+`${{ github.event.issue.number }}` in this repository.
+
+Parse the following fields from the issue:
+
+| Field | Where to find it |
+|-------|-----------------|
+| **Crash title** | The GitHub issue title: `${{ github.event.issue.title }}` |
+| **Severity level** | Look for a word such as `fatal`, `error`, or `warning` in the issue body; default to `error` if absent |
+| **Sentry URL** | The first `https://sentry.io/...` URL that appears in the issue body |
+| **Culprit** | A line in the body that identifies the file and function — look for patterns like `tasks/views.py in delete_task` or `tasks.views in delete_task` |
+
+Detailed parsing guidance is in `.github/triage-instructions.md §2a`.
+
+---
+
+## Step 3 — Locate the culprit file
+
+Using the culprit extracted above, apply the conversion rule from
+`.github/triage-instructions.md §2` to determine `<file_path>` and
+`<function_name>`.
 
 Read the entire culprit file and find the exact function.
 
 ---
 
-## Step 3 — Understand the crash
+## Step 4 — Understand the crash
 
 Before writing any code, answer these three questions:
 
@@ -76,24 +84,24 @@ Before writing any code, answer these three questions:
 
 ---
 
-## Step 4 — Check git history
+## Step 5 — Check git history
 
 Run `git log --oneline -15 -- <culprit_file>` on the culprit file.
 Identify any recent commit that removed a guard or changed the logic.
 
 ---
 
-## Step 5 — Apply the fix
+## Step 6 — Apply the fix
 
 Rules:
 - Make the **smallest correct change** possible — touch only the crashing function
 - Match the existing code style exactly (see `.github/triage-instructions.md §4`)
 - Do NOT refactor unrelated code, change formatting, or add new dependencies
-- Do NOT modify `webhooks/` or `migrations/` unless the crash originates there
+- Do NOT modify `migrations/` unless the crash originates there
 
 ---
 
-## Step 6 — Open a Draft Pull Request
+## Step 7 — Open a Draft Pull Request
 
 Create a branch named `fix/sentry-<slug>` where `<slug>` is the crash title
 lowercased with spaces and special characters replaced by hyphens (max 55 chars).
@@ -105,10 +113,11 @@ The PR **must** be a **draft**. Use this description format exactly:
 
 | Field | Value |
 |-------|-------|
-| **Crash** | <title from payload> |
-| **Culprit** | `<culprit from payload>` |
-| **Severity** | <level from payload> |
-| **Sentry URL** | [View crash](<url from payload>) |
+| **Crash title** | <title from issue> |
+| **Culprit** | `<culprit>` |
+| **Severity** | <level> |
+| **Sentry URL** | [View crash](<sentry url from issue body>) |
+| **Triage issue** | Closes #${{ github.event.issue.number }} |
 
 ## Root Cause
 
@@ -136,7 +145,12 @@ The PR **must** be a **draft**. Use this description format exactly:
 
 - **Side effects:** <none or describe>
 - **Edge cases covered:** <list>
+- **Edge cases NOT covered (requires follow-up):** <none or list>
 ```
 
-Do NOT merge the PR. Leave it as a draft for the human engineer to review, approve, and merge.
+The `Closes #${{ github.event.issue.number }}` line ensures the triggering
+GitHub issue is auto-closed when the PR is merged.
+
+Do NOT merge the PR. Leave it as a draft for the human engineer to review,
+approve, and merge.
 

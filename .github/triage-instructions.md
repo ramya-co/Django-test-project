@@ -15,25 +15,22 @@ Django-test-project/
 ├── requirements.txt
 ├── .env                        ← local secrets (git-ignored)
 ├── todoproject/                ← project config
-│   ├── settings.py             ← Django settings; GH_PAT/GH_OWNER/GH_REPO/SENTRY_DSN loaded here
-│   ├── urls.py                 ← root URL router  (admin/ + tasks/ + webhooks/)
+│   ├── settings.py             ← Django settings; SENTRY_DSN loaded here
+│   ├── urls.py                 ← root URL router  (admin/ + tasks/)
 │   ├── wsgi.py
 │   └── asgi.py
-├── tasks/                      ← the Todo-list application
-│   ├── models.py               ← Task(id, title:str, completed:bool, created_at:datetime)
-│   ├── views.py                ← index, add_task, toggle_task, delete_task, export_tasks_csv
-│   ├── urls.py                 ← '', 'add/', 'toggle/<id>/', 'delete/<id>/', 'export/'
-│   ├── admin.py
-│   ├── migrations/
-│   └── templates/tasks/        ← base.html, index.html
-└── webhooks/                   ← Sentry → GitHub bridge (do not modify unless the crash is here)
-    ├── views.py                ← sentry_webhook: receives Sentry payload, dispatches to GitHub
-    └── urls.py                 ← 'sentry/'
+└── tasks/                      ← the Todo-list application
+    ├── models.py               ← Task(id, title:str, completed:bool, created_at:datetime)
+    ├── views.py                ← index, add_task, toggle_task, delete_task, export_tasks_csv
+    ├── urls.py                 ← '', 'add/', 'toggle/<id>/', 'delete/<id>/', 'export/'
+    ├── admin.py
+    ├── migrations/
+    └── templates/tasks/        ← base.html, index.html
 ```
 
 **Framework & versions:** Django 6.x · SQLite · Python 3.x  
 **No frontend framework** — plain Django templates.  
-**No external services in the hot path** except the webhook forwarding in `webhooks/views.py`.
+**Crash detection:** Sentry SDK via `SENTRY_DSN`; the Sentry GitHub integration creates a GitHub Issue which triggers this triage workflow.
 
 ---
 
@@ -48,16 +45,56 @@ Sentry sets `culprit` in one of these formats:
 | `package.module in Class.method` | `tasks.views in TaskViewSet.destroy` | `tasks/views.py`, method `destroy` on `TaskViewSet` |
 
 **Conversion rule:** replace every `.` with `/`, append `.py`, then strip the `in …` suffix for the file path.
+---
 
+## 2a · Extracting Crash Details from the GitHub Issue Body
+
+Crash details now arrive as a GitHub Issue created by Sentry's native GitHub
+integration (bot login: `sentry-io[bot]`). The structured `workflow_dispatch`
+inputs no longer exist — you must parse the relevant fields from free text.
+
+### Crash title
+Use the **GitHub issue title** verbatim. It is set by Sentry to the exception
+type and message, e.g. `KeyError: 'pending'`.
+
+### Sentry URL
+Scan the issue body for the first URL that matches `https://sentry.io/`.
+This is the direct link to the Sentry issue's event detail page.
+
+### Severity level
+Look for one of the words `fatal`, `error`, or `warning` (case-insensitive)
+in the issue body. If none is found, default to `error`.
+
+### Culprit file and function
+The culprit typically appears in the issue body in one of these forms:
+
+| Pattern in body | Extraction |
+|-----------------|------------|
+| `tasks/views.py in delete_task` | file = `tasks/views.py`, fn = `delete_task` |
+| `tasks.views in delete_task` | apply dot→slash + `.py` rule from §2 |
+| A code block or stack trace line like `File "tasks/views.py", line 42, in delete_task` | file = `tasks/views.py`, fn = `delete_task` |
+
+Steps:
+1. Search the body for a line containing `in <identifier>` near a file path or module path.
+2. Apply the conversion rule from §2 to obtain the file path and function name.
+3. Verify the file exists in the repository (`ls <file_path>`).
+
+### Fallback — culprit cannot be identified
+If after the steps above you still cannot confidently identify the culprit file:
+1. Extract the **exception type** from the crash title (e.g. `KeyError`, `ZeroDivisionError`).
+2. Search the codebase: `grep -rn "raise \|except " tasks/ --include="*.py"` and look for code that could raise that exception type.
+3. Cross-reference with the Sentry URL (open it if possible) for the full stack trace.
+4. Narrow to the most plausible function, state your reasoning in the PR description, and proceed with the fix.
 ---
 
 ## 3 · Investigation Checklist — Complete Every Step
 
 ### Step 1 — Locate the culprit
 
-1. Parse `culprit` using the table above to get `<file_path>` and `<function_name>`.
-2. Read the entire file (`cat <file_path>`).
-3. Find the exact function/method.  If the function is not in that file, search: `grep -rn "def <function_name>" .`
+1. Extract crash details from the GitHub issue body using the guidance in **§2a**.
+2. Parse the culprit using the table in **§2** to get `<file_path>` and `<function_name>`.
+3. Read the entire file (`cat <file_path>`).
+4. Find the exact function/method.  If the function is not in that file, search: `grep -rn "def <function_name>" .`
 
 ### Step 2 — Understand the crash
 
@@ -78,9 +115,9 @@ git log --oneline -20 -- <file_path>
 
 ### Step 4 — Check for related open issues / PRs
 
-Search open issues for keywords from the crash `title` and `culprit` module.
+Search open issues for keywords from the crash title and culprit module.
 
-- If a **duplicate** already has an open PR — add a comment to that PR with the new crash URL and **stop here**.
+- If a **duplicate** already has an open PR — add a comment to that PR with the new Sentry crash URL and **stop here**.
 - If a duplicate issue has **no PR** — continue and reference that issue in your PR.
 
 ### Step 5 — Apply the fix
@@ -90,7 +127,6 @@ Rules:
 - Match the existing code style exactly (see §4 below).
 - Do NOT add new packages unless absolutely necessary; if you must, add them to `requirements.txt` with a pinned version.
 - Do NOT modify unrelated files, refactor unrelated code, or change formatting outside the fix.
-- Do NOT modify `webhooks/` unless the crash originates there.
 
 ### Step 6 — Verify locally (mental or shell check)
 
@@ -144,11 +180,11 @@ fix: <crash title> (Sentry auto-triage)
 
 | Field | Value |
 |-------|-------|
-| **Crash title** | <title from client_payload> |
-| **Culprit** | `<culprit from client_payload>` |
-| **Severity** | <level> |
-| **Sentry URL** | [View crash](<url from client_payload>) |
-| **Triage issue** | Closes #<issue number that triggered this PR> |
+| **Crash title** | <title from GitHub issue> |
+| **Culprit** | `<culprit extracted from issue body>` |
+| **Severity** | <level extracted from issue body> |
+| **Sentry URL** | [View crash](<sentry url from issue body>) |
+| **Triage issue** | Closes #<GitHub issue number that triggered this workflow> |
 
 ---
 
@@ -200,8 +236,8 @@ To verify the fix:
 | Rule | Detail |
 |------|--------|
 | ❌ No auto-merge | The PR must be a **draft**. Never mark it ready or merge it. |
-| ❌ No issue as output | Do not open a GitHub Issue as the result of this task. The issue that triggered you is the task brief — you do not need to create another one. |
+| ❌ No issue as output | Do not open a new GitHub Issue. The issue that triggered you is the task brief — your only output is a draft PR. |
 | ❌ No unrelated changes | If you notice other bugs while reading the code, do not fix them in this PR. |
 | ❌ No new migration without a note | If your fix requires a schema change, call it out explicitly in the PR description and label it `needs-migration-review`. |
-| ✅ Always reference Sentry URL | Include `client_payload.url` in the PR description so the reviewer can see the real stack trace. |
-| ✅ Always reference the triggering issue | Use `Closes #<N>` so the issue is auto-closed when the PR merges. |
+| ✅ Always reference Sentry URL | Include the Sentry URL (extracted from the issue body) in the PR description so the reviewer can see the real stack trace. |
+| ✅ Always reference the triggering issue | Use `Closes #<N>` in the PR body so the GitHub issue is auto-closed when the PR merges. |

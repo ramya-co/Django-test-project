@@ -51,7 +51,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'tasks',
-    'webhooks',
 ]
 
 MIDDLEWARE = [
@@ -135,16 +134,6 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# ── GitHub integration (Sentry crash-triage pipeline) ────────────────────────
-# Set these in your .env file or as real environment variables.
-# Never commit real values to version control.
-GH_PAT = os.environ.get("GH_PAT", "")
-GH_OWNER = os.environ.get("GH_OWNER", "")
-GH_REPO = os.environ.get("GH_REPO", "")
-
-# Sentry client secret — used to verify incoming webhook signatures
-SENTRY_CLIENT_SECRET = os.environ.get("SENTRY_CLIENT_SECRET", "")
 
 # ── Sentry SDK (crash monitoring) ────────────────────────────────────────────
 # Set SENTRY_DSN in your .env file. Leave blank to disable Sentry locally.

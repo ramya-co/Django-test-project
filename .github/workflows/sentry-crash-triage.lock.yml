@@ -22,41 +22,34 @@
 # For more information: https://github.github.com/gh-aw/introduction/overview/
 #
 #
-# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"65e4e99c0fad379bc72dad3fc6e8c6d7896dfc1b77f19cf5c8407809a5566228"}
+# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"0a9d3233e9597d3815fd04b4c3edd491e91f35b08a00053e6924d8a51f26a9a7"}
 
 name: "Sentry Crash Auto-Triage"
 "on":
-  workflow_dispatch:
-    inputs:
-      culprit:
-        description: Culprit from Sentry (e.g. tasks.views in filter_tasks)
-        required: true
-      level:
-        default: error
-        description: Severity level (fatal, error, warning)
-        required: true
-      title:
-        description: "Crash title from Sentry (e.g. KeyError: 'pending')"
-        required: true
-      url:
-        description: Direct link to the Sentry issue
-        required: true
+  issues:
+    types:
+    - opened
 
 permissions: {}
 
 concurrency:
-  group: "gh-aw-${{ github.workflow }}"
+  group: "gh-aw-${{ github.workflow }}-${{ github.event.issue.number }}"
 
 run-name: "Sentry Crash Auto-Triage"
 
 jobs:
   activation:
+    needs: pre_activation
+    if: needs.pre_activation.outputs.activated == 'true'
     runs-on: ubuntu-slim
     permissions:
       contents: read
     outputs:
+      body: ${{ steps.sanitized.outputs.body }}
       comment_id: ""
       comment_repo: ""
+      text: ${{ steps.sanitized.outputs.text }}
+      title: ${{ steps.sanitized.outputs.title }}
     steps:
       - name: Setup Scripts
         uses: github/gh-aw/actions/setup@f88ec26c65cc20ebb8ceabe809c9153385945bfe # v0.46.0
@@ -88,6 +81,15 @@ jobs:
             setupGlobals(core, github, context, exec, io);
             const { main } = require('/opt/gh-aw/actions/check_workflow_timestamp_api.cjs');
             await main();
+      - name: Compute current body text
+        id: sanitized
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
+            setupGlobals(core, github, context, exec, io);
+            const { main } = require('/opt/gh-aw/actions/compute_text.cjs');
+            await main();
       - name: Create prompt with built-in context
         env:
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
@@ -95,11 +97,8 @@ jobs:
           GH_AW_GITHUB_ACTOR: ${{ github.actor }}
           GH_AW_GITHUB_EVENT_COMMENT_ID: ${{ github.event.comment.id }}
           GH_AW_GITHUB_EVENT_DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
-          GH_AW_GITHUB_EVENT_INPUTS_CULPRIT: ${{ github.event.inputs.culprit }}
-          GH_AW_GITHUB_EVENT_INPUTS_LEVEL: ${{ github.event.inputs.level }}
-          GH_AW_GITHUB_EVENT_INPUTS_TITLE: ${{ github.event.inputs.title }}
-          GH_AW_GITHUB_EVENT_INPUTS_URL: ${{ github.event.inputs.url }}
           GH_AW_GITHUB_EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_AW_GITHUB_EVENT_ISSUE_TITLE: ${{ github.event.issue.title }}
           GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
@@ -180,10 +179,9 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
-          GH_AW_GITHUB_EVENT_INPUTS_CULPRIT: ${{ github.event.inputs.culprit }}
-          GH_AW_GITHUB_EVENT_INPUTS_LEVEL: ${{ github.event.inputs.level }}
-          GH_AW_GITHUB_EVENT_INPUTS_TITLE: ${{ github.event.inputs.title }}
-          GH_AW_GITHUB_EVENT_INPUTS_URL: ${{ github.event.inputs.url }}
+          GH_AW_GITHUB_ACTOR: ${{ github.actor }}
+          GH_AW_GITHUB_EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_AW_GITHUB_EVENT_ISSUE_TITLE: ${{ github.event.issue.title }}
         with:
           script: |
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
@@ -197,11 +195,8 @@ jobs:
           GH_AW_GITHUB_ACTOR: ${{ github.actor }}
           GH_AW_GITHUB_EVENT_COMMENT_ID: ${{ github.event.comment.id }}
           GH_AW_GITHUB_EVENT_DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
-          GH_AW_GITHUB_EVENT_INPUTS_CULPRIT: ${{ github.event.inputs.culprit }}
-          GH_AW_GITHUB_EVENT_INPUTS_LEVEL: ${{ github.event.inputs.level }}
-          GH_AW_GITHUB_EVENT_INPUTS_TITLE: ${{ github.event.inputs.title }}
-          GH_AW_GITHUB_EVENT_INPUTS_URL: ${{ github.event.inputs.url }}
           GH_AW_GITHUB_EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_AW_GITHUB_EVENT_ISSUE_TITLE: ${{ github.event.issue.title }}
           GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
@@ -222,11 +217,8 @@ jobs:
                 GH_AW_GITHUB_ACTOR: process.env.GH_AW_GITHUB_ACTOR,
                 GH_AW_GITHUB_EVENT_COMMENT_ID: process.env.GH_AW_GITHUB_EVENT_COMMENT_ID,
                 GH_AW_GITHUB_EVENT_DISCUSSION_NUMBER: process.env.GH_AW_GITHUB_EVENT_DISCUSSION_NUMBER,
-                GH_AW_GITHUB_EVENT_INPUTS_CULPRIT: process.env.GH_AW_GITHUB_EVENT_INPUTS_CULPRIT,
-                GH_AW_GITHUB_EVENT_INPUTS_LEVEL: process.env.GH_AW_GITHUB_EVENT_INPUTS_LEVEL,
-                GH_AW_GITHUB_EVENT_INPUTS_TITLE: process.env.GH_AW_GITHUB_EVENT_INPUTS_TITLE,
-                GH_AW_GITHUB_EVENT_INPUTS_URL: process.env.GH_AW_GITHUB_EVENT_INPUTS_URL,
                 GH_AW_GITHUB_EVENT_ISSUE_NUMBER: process.env.GH_AW_GITHUB_EVENT_ISSUE_NUMBER,
+                GH_AW_GITHUB_EVENT_ISSUE_TITLE: process.env.GH_AW_GITHUB_EVENT_ISSUE_TITLE,
                 GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER: process.env.GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER,
                 GH_AW_GITHUB_REPOSITORY: process.env.GH_AW_GITHUB_REPOSITORY,
                 GH_AW_GITHUB_RUN_ID: process.env.GH_AW_GITHUB_RUN_ID,
@@ -256,8 +248,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    concurrency:
-      group: "gh-aw-copilot-${{ github.workflow }}"
+      issues: read
+      pull-requests: read
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       GH_AW_ASSETS_ALLOWED_EXTS: ""
@@ -935,8 +927,6 @@ jobs:
     if: needs.agent.outputs.output_types != '' || needs.agent.outputs.has_patch == 'true'
     runs-on: ubuntu-latest
     permissions: {}
-    concurrency:
-      group: "gh-aw-copilot-${{ github.workflow }}"
     timeout-minutes: 10
     outputs:
       success: ${{ steps.parse_results.outputs.success }}
@@ -1030,6 +1020,28 @@ jobs:
           name: threat-detection.log
           path: /tmp/gh-aw/threat-detection/detection.log
           if-no-files-found: ignore
+
+  pre_activation:
+    runs-on: ubuntu-slim
+    outputs:
+      activated: ${{ steps.check_membership.outputs.is_team_member == 'true' }}
+    steps:
+      - name: Setup Scripts
+        uses: github/gh-aw/actions/setup@f88ec26c65cc20ebb8ceabe809c9153385945bfe # v0.46.0
+        with:
+          destination: /opt/gh-aw/actions
+      - name: Check team membership for workflow
+        id: check_membership
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          GH_AW_REQUIRED_ROLES: admin,maintainer,write
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
+            setupGlobals(core, github, context, exec, io);
+            const { main } = require('/opt/gh-aw/actions/check_membership.cjs');
+            await main();
 
   safe_outputs:
     needs:
