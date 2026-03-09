@@ -31,9 +31,12 @@ def add_task(request):
     title = request.POST.get('title', '').strip()
     category = request.POST.get('category', '')
     # Resolve the human-readable label for the chosen category
-    category_label = _CATEGORY_LABELS[category]  # KeyError when default '-- Select category --' is submitted
+    category_label = _CATEGORY_LABELS.get(category)
     if title:
-        Task.objects.create(title=f'[{category_label}] {title}')
+        if category_label:
+            Task.objects.create(title=f'[{category_label}] {title}')
+        else:
+            Task.objects.create(title=title)
     return redirect('index')
 
 
