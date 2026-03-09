@@ -8,6 +8,7 @@
         <input type="text" name="q" placeholder="Search tasks..." style="padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px;">
         <button type="submit" style="padding: 5px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">🔍 Search</button>
     </form>
+    <a href="{% url 'export_tasks_csv' %}" style="padding: 5px 12px; background: #48bb78; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; margin-left: 8px; font-size: 0.9em;">📥 Export CSV</a>
 </div>
 
 <div style="text-align: center; margin-bottom: 16px;">
@@ -25,6 +26,7 @@
     {% csrf_token %}
     <input type="text" name="title" placeholder="Add a new task..." required>
     <input type="text" name="reminder" placeholder="Reminder time (HH:MM)" style="padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; margin-left: 6px; width: 160px;">
+    <input type="text" name="estimated_hours" placeholder="Est. hours (e.g. 2)" style="padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; margin-left: 6px; width: 140px;">
     <button type="submit">Add Task</button>
 </form>
 

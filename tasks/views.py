@@ -43,6 +43,8 @@ def add_task(request):
     """Add a new task with an optional reminder time (HH:MM)."""
     title = request.POST.get('title', '').strip()
     reminder_str = request.POST.get('reminder', '').strip()
+    # Parse estimated hours — int() will raise ValueError if the field is blank or non-numeric
+    estimated_hours = int(request.POST.get('estimated_hours', ''))
 
     reminder_label = None
     if reminder_str:
