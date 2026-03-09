@@ -1,0 +1,156 @@
+name: "Sentry Triage — Slack Notification"
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  notify-slack:
+    # Only run for agent-created Sentry triage branches
+    if: startsWith(github.event.pull_request.head.ref, 'fix/sentry-')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+
+    steps:
+      - name: Check PR was opened by the agent
+        id: check-author
+        run: |
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          echo "PR opened by: $AUTHOR"
+          if [[ "$AUTHOR" != "github-actions[bot]" && "$AUTHOR" != "copilot-swe-agent[bot]" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "PR not opened by agent — skipping Slack notification."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract URLs from PR body
+        if: steps.check-author.outputs.skip != 'true'
+        id: extract
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Extract Sentry URL from markdown link: [View crash](https://sentry.io/...)
+          SENTRY_URL=$(echo "$PR_BODY" | grep -oP '(?<=\()https://[^)]*sentry[^)]*' | head -1)
+
+          # Fallback: bare URL anywhere in the body
+          if [[ -z "$SENTRY_URL" ]]; then
+            SENTRY_URL=$(echo "$PR_BODY" | grep -oP 'https://[^\s)>\"]+sentry\.io[^\s)>\"]+' | head -1)
+          fi
+
+          # Extract GitHub issue number from "Closes #N"
+          ISSUE_NUM=$(echo "$PR_BODY" | grep -oP '(?i)closes\s+#\K[0-9]+' | head -1)
+          if [[ -n "$ISSUE_NUM" ]]; then
+            ISSUE_URL="https://github.com/${REPO}/issues/${ISSUE_NUM}"
+          else
+            ISSUE_URL=""
+          fi
+
+          echo "sentry_url=$SENTRY_URL"   >> "$GITHUB_OUTPUT"
+          echo "issue_url=$ISSUE_URL"     >> "$GITHUB_OUTPUT"
+          echo "pr_url=$PR_URL"           >> "$GITHUB_OUTPUT"
+          echo "pr_title=$PR_TITLE"       >> "$GITHUB_OUTPUT"
+
+          echo "Sentry URL : $SENTRY_URL"
+          echo "Issue URL  : $ISSUE_URL"
+          echo "PR URL     : $PR_URL"
+
+      - name: Send Slack notification
+        if: steps.check-author.outputs.skip != 'true'
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_SENTRY_TRIAGE_WEBHOOK }}
+          SENTRY_URL: ${{ steps.extract.outputs.sentry_url }}
+          ISSUE_URL: ${{ steps.extract.outputs.issue_url }}
+          PR_URL: ${{ steps.extract.outputs.pr_url }}
+          PR_TITLE: ${{ steps.extract.outputs.pr_title }}
+        run: |
+          # Build Sentry field — show URL or fallback text
+          if [[ -n "$SENTRY_URL" ]]; then
+            SENTRY_FIELD="*Sentry Issue:*\n<${SENTRY_URL}|View in Sentry>"
+          else
+            SENTRY_FIELD="*Sentry Issue:*\nURL not found in PR body"
+          fi
+
+          # Build GitHub Issue field
+          if [[ -n "$ISSUE_URL" ]]; then
+            ISSUE_FIELD="*GitHub Issue:*\n<${ISSUE_URL}|View Issue>"
+          else
+            ISSUE_FIELD="*GitHub Issue:*\nReference not found in PR body"
+          fi
+
+          PAYLOAD=$(cat <<EOF
+          {
+            "text": "🤖 Sentry Auto-Triage: Draft PR raised — ${PR_TITLE}",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🤖 Sentry Auto-Triage: Fix PR Raised",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "A production crash was automatically triaged by GitHub Copilot. A draft fix PR has been opened and is awaiting human review."
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "${SENTRY_FIELD}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Draft Fix PR:*\n<${PR_URL}|${PR_TITLE}>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "${ISSUE_FIELD}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n\`${{ github.event.pull_request.head.ref }}\`"
+                  }
+                ]
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "⚠️ This is a *draft PR* — review and approve before merging. Do not merge directly."
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          HTTP_STATUS=$(curl -s -o /tmp/slack_response.txt -w "%{http_code}" \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            -d "$PAYLOAD" \
+            "$SLACK_WEBHOOK")
+
+          RESPONSE=$(cat /tmp/slack_response.txt)
+          echo "Slack response: $RESPONSE (HTTP $HTTP_STATUS)"
+
+          if [[ "$HTTP_STATUS" != "200" || "$RESPONSE" != "ok" ]]; then
+            echo "::error::Slack notification failed — HTTP $HTTP_STATUS, body: $RESPONSE"
+            exit 1
+          fi
+
+          echo "✅ Slack notification sent successfully."
