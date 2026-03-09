@@ -64,14 +64,15 @@ jobs:
             BRANCH_REF="$INPUT_BRANCH_REF"
 
           else
-            # workflow_run: look up the most recent open fix/sentry- PR opened
-            # by github-actions[bot] (the safe_outputs job in the triage workflow).
+            # workflow_run: look up the most recent open fix/sentry- PR.
+            # Branch prefix fix/sentry- is unique to the triage agent — no
+            # author filter needed (bot login format varies across CLI versions).
             PR_JSON=$(gh pr list \
               --repo "$REPO" \
               --state open \
-              --json number,title,url,headRefName,body,author \
-              --jq '[.[] | select(.headRefName | startswith("fix/sentry-"))
-                         | select(.author.login == "github-actions[bot]")]
+              --limit 50 \
+              --json number,title,url,headRefName,body \
+              --jq '[.[] | select(.headRefName | startswith("fix/sentry-"))]
                    | sort_by(.number) | last')
 
             if [[ -z "$PR_JSON" || "$PR_JSON" == "null" ]]; then
