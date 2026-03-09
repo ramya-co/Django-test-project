@@ -18,7 +18,7 @@ def index(request):
 
     # Show a "last added" hint in the header
     latest_task = tasks.order_by('-created_at').first()
-    latest_title = latest_task.title  # BUG: AttributeError when no tasks exist
+    latest_title = latest_task.title if latest_task else None
 
     return render(request, 'tasks/index.html', {'tasks': tasks, 'sort': sort, 'latest_title': latest_title})
 
