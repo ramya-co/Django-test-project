@@ -71,10 +71,10 @@ jobs:
       #
       # workflow_dispatch  → inputs come directly from the caller. No lookup.
       #
-      # workflow_run       → query the most recent open fix/sentry-* PR and
-      #                      apply a TIMESTAMP GATE to ensure it was created
-      #                      DURING this specific triage run — not a stale PR
-      #                      from a previous run.
+      # workflow_run       → filter open PRs whose branch ends with
+      #                      "-<run_id>".  Because the triage workflow embeds
+      #                      github.run_id in the branch name, each run has a
+      #                      unique 1:1 match — no timestamp gate needed.
       - name: Resolve PR details
         id: resolve
         env:
@@ -82,7 +82,6 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           # workflow_run context
-          RUN_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           # workflow_dispatch inputs
           INPUT_PR_URL: ${{ inputs.pr_url }}
@@ -107,54 +106,29 @@ jobs:
 
           else
             # ── workflow_run path ──────────────────────────────────────────
-            # Look up the most recent open PR whose branch starts with
-            # fix/sentry-. ALSO fetch createdAt so we can apply the
-            # timestamp gate.
+            # The triage workflow embeds github.run_id in the branch name:
+            #   fix/sentry-<slug>-<run_id>
+            # Filter for the exact PR belonging to THIS run using the
+            # run_id suffix.  This is a precise 1:1 match — concurrent runs
+            # cannot collide and stale PRs from previous runs are never
+            # selected.
             echo "Triage workflow run ID : $RUN_ID"
-            echo "Triage run started at  : $RUN_STARTED_AT"
 
             PR_JSON=$(gh pr list \
               --repo "$REPO" \
               --state open \
               --limit 50 \
-              --json number,title,url,headRefName,body,createdAt \
-              --jq '[.[] | select(.headRefName | startswith("fix/sentry-"))]
-                   | sort_by(.number) | last')
+              --json number,title,url,headRefName,body \
+              --jq "[.[] | select(.headRefName | endswith(\"-$RUN_ID\"))] | first")
 
             if [[ -z "$PR_JSON" || "$PR_JSON" == "null" ]]; then
-              echo "::notice::No open fix/sentry-* PR found — triage run did not create a PR. Skipping notification."
+              echo "::notice::No open fix/sentry-*-${RUN_ID} PR found — triage run did not create a PR. Skipping notification."
               echo "pr_url=" >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
-            PR_NUMBER=$(echo "$PR_JSON"    | jq -r '.number')
-            PR_CREATED_AT=$(echo "$PR_JSON" | jq -r '.createdAt')
-
-            echo "Newest fix/sentry-* PR : #${PR_NUMBER}"
-            echo "PR created at          : $PR_CREATED_AT"
-
-            # ── TIMESTAMP GATE ────────────────────────────────────────────
-            # Only notify if the PR was created AFTER this triage run
-            # started. This is the primary dedup guardrail.
-            #
-            # Scenario it prevents:
-            #   1. Crash A → triage run A → PR #10 created → Slack sent ✅
-            #   2. Crash B → triage run B → agent finds duplicate, no PR
-            #      → workflow_run fires → finds stale PR #10 → would send
-            #      duplicate notification ❌  (now blocked by this gate)
-            RUN_EPOCH=$(date -d "$RUN_STARTED_AT" +%s)
-            PR_EPOCH=$(date -d "$PR_CREATED_AT" +%s)
-
-            echo "Run started epoch      : $RUN_EPOCH"
-            echo "PR created epoch       : $PR_EPOCH"
-
-            if [[ "$PR_EPOCH" -lt "$RUN_EPOCH" ]]; then
-              echo "::notice::PR #${PR_NUMBER} (created $PR_CREATED_AT) predates triage run (started $RUN_STARTED_AT) — this is a stale PR from a previous run. Skipping notification."
-              echo "pr_url=" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            echo "✓ PR #${PR_NUMBER} was created during this triage run — proceeding with notification."
+            PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+            echo "✓ Found PR #${PR_NUMBER} for run ${RUN_ID} — proceeding with notification."
 
             PR_URL=$(echo "$PR_JSON"     | jq -r '.url')
             PR_TITLE=$(echo "$PR_JSON"   | jq -r '.title')
@@ -195,8 +169,8 @@ jobs:
 
       # ── Step 2: Send Slack notification ─────────────────────────────────
       #
-      # Only runs if pr_url is non-empty (i.e. the timestamp gate passed
-      # or a valid workflow_dispatch was provided).
+      # Only runs if pr_url is non-empty (i.e. the run_id filter matched
+      # a PR or a valid workflow_dispatch was provided).
       #
       # Uses Slack Block Kit with action buttons. The payload is built with
       # jq so all dynamic strings are safely JSON-escaped.

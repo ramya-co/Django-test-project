@@ -107,8 +107,9 @@ Rules:
 
 ## Step 7 — Open a Draft Pull Request
 
-Create a branch named `fix/sentry-<slug>` where `<slug>` is the crash title
-lowercased with spaces and special characters replaced by hyphens (max 55 chars).
+Create a branch named `fix/sentry-<slug>-${{ github.run_id }}` where `<slug>` is
+the crash title lowercased with spaces and special characters replaced by
+hyphens (max 45 chars for the slug — the run ID will be appended automatically).
 
 The PR **must** be a **draft**. Use this description format exactly:
 
