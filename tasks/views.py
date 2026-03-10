@@ -13,7 +13,8 @@ def index(request):
         'oldest': 'created_at',
         'alpha':  'title',
     }
-    order_field = sort_map.get(sort, '-created_at')
+    # BUG: direct lookup raises KeyError if ?sort= contains an unexpected value
+    order_field = sort_map[sort]
     tasks = Task.objects.order_by(order_field)
 
     # Show a "last added" hint in the header
