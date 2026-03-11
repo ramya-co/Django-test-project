@@ -21,14 +21,16 @@ Django-test-project/
 │   └── asgi.py
 └── tasks/                      ← the Todo-list application
     ├── models.py               ← Task(id, title:str, completed:bool, created_at:datetime)
-    ├── views.py                ← index, add_task, toggle_task, delete_task, export_tasks_csv
-    ├── urls.py                 ← '', 'add/', 'toggle/<id>/', 'delete/<id>/', 'export/'
+    ├── views.py                ← index, add_task, toggle_task, delete_task,
+    │                              search_tasks, task_detail, export_tasks_csv
+    ├── urls.py                 ← '', 'add/', 'toggle/<id>/', 'delete/<id>/'
+    │                              'search/', 'task/<id>/', 'export/'
     ├── admin.py
     ├── migrations/
-    └── templates/tasks/        ← base.html, index.html
+    └── templates/tasks/        ← base.html, index.html, search.html, task_detail.html
 ```
 
-**Framework & versions:** Django 6.x · SQLite · Python 3.x  
+**Framework & versions:** Django 4.2 · SQLite · Python 3.x  
 **No frontend framework** — plain Django templates.  
 **Crash detection:** Sentry SDK via `SENTRY_DSN`; the Sentry GitHub integration creates a GitHub Issue which triggers this triage workflow.
 
@@ -243,3 +245,163 @@ To verify the fix:
 | ❌ No new migration without a note | If your fix requires a schema change, call it out explicitly in the PR description and label it `needs-migration-review`. |
 | ✅ Always reference Sentry URL | Include the Sentry URL (extracted from the issue body) in the PR description so the reviewer can see the real stack trace. |
 | ✅ Always reference the triggering issue | Use `Closes #<N>` in the PR body so the GitHub issue is auto-closed when the PR merges. |
+
+---
+
+## 7 · Manual Issue Template
+
+Human engineers may open a triage issue manually when a crash is not reported
+by the Sentry bot. The agent must recognise the format below and process it
+identically to a Sentry bot issue (with confidence tracking per §2a).
+
+```markdown
+## Issue Type
+<!-- Choose one: Bug / Crash / Data Issue / Config Issue -->
+Type: {type}
+
+## Exception / Error
+<!-- The full exception class and message, e.g. KeyError: 'ticket_id' -->
+Exception: {ExceptionClass: message}
+
+## Culprit
+<!-- File path and function, e.g. tasks/views.py in delete_task -->
+Culprit: {file_path in function_name}
+
+## Severity
+<!-- fatal / error / warning -->
+Severity: {severity}
+
+## Description
+<!-- What happened, when, which instance/subdomain was affected -->
+{free text}
+
+## Stack Trace (if available)
+```
+{paste stack trace here}
+```
+```
+
+**Required markers for detection:** `Type:`, `Exception:`, `Culprit:` — all
+three must be present in the issue body for Path B triage to activate.
+
+**Partial-data handling:** If any field is missing, triage proceeds with reduced
+confidence. The agent must explicitly state:
+- Which fields were missing
+- What assumptions were made to fill the gaps
+- The overall confidence level (High / Medium / Low) per the rules in Step 2
+
+---
+
+## 8 · Fix Action Classification
+
+After root cause analysis, classify the crash on two axes before deciding
+whether to open a PR or post a remediation comment.
+
+### Axis 1 — Root cause category
+
+| Category | Description | Fix action |
+|----------|-------------|------------|
+| **Code defect** | Missing guard, wrong logic, unhandled exception path, type error, off-by-one, bad default | **Category B** — open a code PR |
+| **Data/state issue** | Corrupt record, unexpected null, missing FK, stale cache, bad migration data | **Category A** — ops remediation |
+| **Race condition** | Concurrent requests, missing lock, non-atomic multi-step operation | **Category A** — ops remediation |
+| **External dependency failure** | Third-party API down, DB connection refused, storage error | **Category A** — ops remediation |
+
+### Axis 2 — Data/state sub-cause (apply when Axis 1 = Data/state issue)
+
+| Sub-cause | Remediation approach |
+|-----------|---------------------|
+| Corrupt or missing record | Run a data-repair script |
+| Stale cache entry | Flush specific cache key or namespace |
+| Bad migration data | Run a one-off data migration or fixup script |
+| Unexpected null from external sync | Re-trigger sync job or patch record |
+
+### Label to apply
+
+| Category | GitHub label |
+|----------|-------------|
+| Category A | `ops-remediation-needed` |
+| Category B | `sentry-triage-code-fix` |
+
+---
+
+## 9 · Impact Level Classification
+
+Use these criteria when writing the Impact Analysis comment (Step 7 of the
+workflow):
+
+| Level | Criteria |
+|-------|----------|
+| **Critical** | Crash affects task creation, CSV export, or overall data integrity of the task list |
+| **High** | Crash affects a core view: `index`, `add_task`, `toggle_task`, `delete_task`, or `export_tasks_csv` |
+| **Medium** | Crash affects a secondary view (`search_tasks`, `task_detail`) or an edge-case input to a core view |
+| **Low** | Crash affects a rare code path, a cosmetic issue, or an admin-only operation |
+
+Always state which criterion was matched and why.
+
+---
+
+## 10 · Deduplication Check Instructions
+
+Run all three checks **before** performing any root cause analysis.
+
+### Check 1 — Open issue deduplication
+Search open issues using the exception class name from the crash title as the
+query string. Compare title and culprit module:
+- **Exact match** (same exception class + same module): post a duplicate comment
+  and stop.
+- **Partial match** (same exception class, different module): continue triage
+  but note the related issue in the impact analysis comment.
+
+### Check 2 — Open PR deduplication
+Search `fix/sentry-` branches and open PR titles for the exception class or
+culprit function name. If an open PR exists:
+- Post a comment on the new issue: `"An open PR already addresses this crash: #<pr_number>."`
+- Stop. Do not open a second PR.
+
+### Check 3 — Recently merged PR check
+Search merged PRs from the last 30 days for the exception class. If found:
+- Do NOT stop — the fix may not be deployed.
+- Add a warning note to the impact analysis comment.
+- Reduce triage confidence by one level (High → Medium, Medium → Low).
+
+---
+
+## 11 · Regression Detection Instructions
+
+A regression is defined as: a crash that is directly traceable to a specific
+code change in the last 30 commits that removed a guard, changed a default, or
+altered function behaviour.
+
+### Detection procedure
+
+1. After running `git log --oneline -15 -- <culprit_file>`, examine each commit
+   that touched the crashing function.
+2. For each candidate commit, run:
+   ```bash
+   git show <hash> -- <culprit_file>
+   ```
+   Look for: removal of a `try/except`, removal of an `if` guard, a changed
+   default value, a changed method signature, or a removed `.get()` fallback.
+3. If such a commit is found, set `REGRESSION_DETECTED=true`.
+
+### Metadata to collect
+
+```bash
+git log --format="%H %ae %an %ad %s" --date=short -1 <hash>
+```
+
+Extract:
+- `commit_hash` — full SHA
+- `github_username` — derive from the author email if it is a
+  `@users.noreply.github.com` address (format: `<id>+<username>@users.noreply.github.com`);
+  otherwise use the author name as a best-effort handle
+- `commit_date` — the author date in `YYYY-MM-DD` format
+- `pr_number` — search merged PRs for the commit hash; if not found, write "not found"
+
+### Effect on the PR
+
+When `REGRESSION_DETECTED=true`:
+1. Add label `potential-regression` to the issue.
+2. Include the `## Regression Detection` section in the PR description (see
+   Step 11 of the workflow).
+3. Request review from `@{github_username}` in addition to `ramya-co/ops-team`.

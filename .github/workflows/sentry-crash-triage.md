@@ -5,10 +5,6 @@ on:
 
 engine: copilot
 
-bots:
-  - sentry-io[bot]
-  - sentry[bot]
-
 permissions:
   contents: read
   issues: read
@@ -16,61 +12,142 @@ permissions:
 
 safe-outputs:
   create-pull-request:
+  add-comment:
+  add-labels:
 ---
 
 # Sentry Crash Auto-Triage
 
-You are a senior Django engineer. A production crash has been detected by Sentry
-and reported as a GitHub Issue by the Sentry GitHub integration. Your job is to
-**find the root cause, apply a minimal targeted fix, and open a draft Pull
+You are a senior Django engineer. A production crash has been detected and
+reported as a GitHub Issue. Your job is to **find the root cause, classify the
+fix action, apply a minimal targeted fix when needed, and open a draft Pull
 Request** for human review.
 
 **You must never auto-merge. You must never open a new GitHub Issue as output.**
 
 ---
 
-## Step 0 — Verify this issue came from Sentry
+## Step 0 — Detect and validate the issue source
 
-Check the workflow actor: `${{ github.actor }}`.
+Read the workflow actor (`${{ github.actor }}`) and the full body of issue
+`${{ github.event.issue.number }}` to determine which path to follow.
 
-- If the actor is **not** `sentry-io[bot]` and does **not** contain the string
-  `sentry` (case-insensitive), output the message:
-  `"Issue not from Sentry bot — exiting gracefully."` and **stop immediately**.
-  Do not make any file changes or open any PR.
-- Otherwise continue to Step 1.
+### Path A — Sentry bot issue
+The actor is `sentry-io[bot]` or any value that contains the string `sentry`
+(case-insensitive). Proceed with Path A parsing in Step 2.
+
+### Path B — Manual issue
+The actor is a human (not a Sentry bot) **and** the issue body contains all
+three of the following marker lines (case-insensitive):
+
+- A line beginning with `Exception:`
+- A line beginning with `Culprit:`
+- A line beginning with `Type:` or `## Issue Type`
+
+If all three markers are present, proceed with Path B parsing in Step 2.
+
+### Exit condition
+If the actor is a human **and** the issue body does NOT contain the three
+markers above, post **nothing**, make **no file changes**, and stop immediately.
+Output the message: `"Issue does not match manual triage template — exiting gracefully."`
 
 ---
 
 ## Step 1 — Read the project playbook
 
 Read `.github/triage-instructions.md` in full **before** writing any code.
-It contains the project structure, code-style guide, culprit-parsing rules, and
-the mandatory PR template.
+It contains the project structure, code-style guide, culprit-parsing rules,
+the manual issue template specification, the fix-action classification table,
+the deduplication instructions, and the mandatory PR template.
 
 ---
 
 ## Step 2 — Extract crash details from the issue
 
-The issue was created automatically by Sentry's GitHub integration. Use your
-GitHub tools to fetch the full body of issue number
-`${{ github.event.issue.number }}` in this repository.
+Fetch the full body of issue `${{ github.event.issue.number }}`.
 
-Parse the following fields from the issue:
+### Path A — Sentry bot issue parsing
 
 | Field | Where to find it |
 |-------|-----------------|
 | **Crash title** | The GitHub issue title: `${{ github.event.issue.title }}` |
-| **Severity level** | Look for a word such as `fatal`, `error`, or `warning` in the issue body; default to `error` if absent |
-| **Sentry URL** | The first `https://` URL containing `sentry.io` that appears in the issue body (may be a subdomain like `https://demo3n.sentry.io/...`) |
-| **Culprit** | A line in the body that identifies the file and function — look for patterns like `tasks/views.py in delete_task` or `tasks.views in delete_task` |
+| **Severity level** | Look for `fatal`, `error`, or `warning` (case-insensitive) in the body; default to `error` if absent |
+| **Sentry URL** | The first `https://` URL containing `sentry.io` in the body |
+| **Culprit** | A line identifying file and function — patterns like `tasks/views.py in delete_task` or `tasks.views in delete_task` |
 
 Detailed parsing guidance is in `.github/triage-instructions.md §2a`.
 
+### Path B — Manual issue parsing
+
+Parse the following structured fields from the issue body using the manual
+template defined in `.github/triage-instructions.md §7`:
+
+| Field | Marker in body |
+|-------|---------------|
+| **Issue type** | Line beginning with `Type:` |
+| **Exception** | Line beginning with `Exception:` |
+| **Culprit** | Line beginning with `Culprit:` — format is `file_path in function_name` |
+| **Severity** | Line beginning with `Severity:` |
+| **Description** | Free text under `## Description` |
+| **Stack trace** | Code block under `## Stack Trace (if available)` |
+
+**Missing fields:** If any required field is absent, do NOT refuse to triage.
+Instead, continue with available fields, state the confidence level
+(High / Medium / Low) at every relevant step, and list all assumptions made.
+Confidence rules:
+- **High** — all 4 of Exception, Culprit, Severity, Stack Trace are present
+- **Medium** — Exception + Culprit present; Severity or Stack Trace missing
+- **Low** — only Exception present; Culprit must be inferred from codebase search
+
+When Culprit is missing and confidence is Low, run:
+```bash
+grep -rn "raise \|except " tasks/ --include="*.py"
+```
+and cross-reference with the Exception type to identify the most plausible
+function. State your reasoning explicitly.
+
 ---
 
-## Step 3 — Locate the culprit file
+## Step 3 — Deduplication check
 
-Using the culprit extracted above, apply the conversion rule from
+**Run these checks before any analysis. Stop early if a duplicate is found.**
+
+### 3a — Duplicate issue check
+Search open GitHub issues for the exception class extracted from the crash title.
+If an open issue already exists with the same exception class **and** culprit
+module, post a comment on the new issue:
+
+```
+## Duplicate Detected
+
+This crash appears to be a duplicate of #<existing_issue_number>.
+
+**Existing issue:** #<number> — <title>
+
+No further triage will be performed. Please track this crash in the existing
+issue. If this is a new recurrence or a different root cause, please re-open
+or create a new issue with differentiated context.
+```
+
+Then **stop immediately**. Do not open a PR.
+
+### 3b — Open PR check
+Search open pull requests for the same exception class or culprit function name
+in the title or branch name (branch prefix `fix/sentry-`).
+If an open PR already exists, post a comment on the issue linking to it and
+**stop**. Do not open a second PR.
+
+### 3c — Recently merged PR check
+Search merged pull requests (last 30 days) for the same exception class.
+If a recently merged PR appears to address the same crash, note this in the
+impact analysis comment (Step 7) and reduce confidence to Medium.
+Do NOT stop — the merge may not have been deployed yet.
+
+---
+
+## Step 4 — Locate the culprit file
+
+Using the culprit extracted in Step 2, apply the conversion rule from
 `.github/triage-instructions.md §2` to determine `<file_path>` and
 `<function_name>`.
 
@@ -78,7 +155,7 @@ Read the entire culprit file and find the exact function.
 
 ---
 
-## Step 4 — Understand the crash
+## Step 5 — Understand the crash
 
 Before writing any code, answer these three questions:
 
@@ -88,14 +165,123 @@ Before writing any code, answer these three questions:
 
 ---
 
-## Step 5 — Check git history
+## Step 6 — Check git history and detect regressions
 
-Run `git log --oneline -15 -- <culprit_file>` on the culprit file.
+Run:
+```bash
+git log --oneline -15 -- <culprit_file>
+```
+
 Identify any recent commit that removed a guard or changed the logic.
+
+### Regression detection
+If a recent commit (within the last 30 commits) touched the crashing function
+**and** the crash appears to have been introduced by that specific commit:
+
+1. Record the commit hash, date, and commit message.
+2. Determine the author's GitHub username from `git log --format="%ae %an" -1 <hash>`.
+3. Search merged pull requests for that commit hash to find an associated PR number.
+4. Set a flag `REGRESSION_DETECTED=true` — this affects the PR description
+   (Step 11) and the reviewer assignment (Step 11).
 
 ---
 
-## Step 6 — Apply the fix
+## Step 7 — Post impact analysis comment
+
+Post this comment on the GitHub issue **before taking any further action**.
+Populate the affected components by running the grep commands shown.
+
+```bash
+# Run these before writing the comment
+grep -rn "<function_name>" tasks/ --include="*.py"
+grep -rn "@require_POST\|def get\|def post\|urlpatterns" tasks/views.py tasks/urls.py 2>/dev/null
+find . -name "test_*.py" -exec grep -l "<function_name>" {} \; 2>/dev/null
+```
+
+Post the comment using this exact structure:
+
+```markdown
+## Impact Analysis
+
+**Impact Level:** {Critical / High / Medium / Low}
+
+**Classification criteria used:**
+- Critical: crash affects task creation, CSV export, or overall data integrity of the task list
+- High: crash affects a core view (index, add_task, toggle_task, delete_task, export_tasks_csv)
+- Medium: crash affects a secondary view (search_tasks, task_detail) or an edge-case input
+- Low: crash affects a rare code path, cosmetic issue, or admin-only operation
+
+**Affected Components:**
+- Files changed or implicated: {list from grep results}
+- API endpoints affected: {list any routes identified from @require_POST, def get, def post, urlpatterns}
+- Background tasks affected: {this project has no background task queue — write "none"}
+- Tests covering this area: {list test files found, or "none found"}
+
+**Risks:**
+
+| Risk | Likelihood | Mitigation |
+|---|---|---|
+| {risk description} | {High / Medium / Low} | {mitigation action} |
+
+**QA Verification Notes:**
+{Specific instructions for QA: which endpoint or flow to exercise, which instance to use, what input triggers the crash}
+
+{If a recently merged PR was found in Step 3c, add:}
+> ⚠️ A recently merged PR may already address this crash but may not be deployed yet: #{pr_number}
+```
+
+---
+
+## Step 8 — Classify the fix action
+
+Using the root cause identified in Step 5 and the classification table in
+`.github/triage-instructions.md §8`, determine:
+
+### Category A — No code PR needed
+Applies when Axis 1 is **Data/state issue** (any Axis 2 cause),
+**Race condition**, or **External dependency failure**.
+
+1. Apply GitHub label `ops-remediation-needed` to the issue.
+2. Post a comment on the issue using this exact structure:
+
+```markdown
+## Automated Triage Analysis
+
+**Root Cause — Axis 1:** {state type}
+**Root Cause — Axis 2:** {cause type, if applicable}
+**Fix Type:** No code change required
+
+### Why No PR Was Created
+{Clear explanation of why this is not a code fix and what the actual problem is}
+
+### Operational Remediation Steps
+1. {step 1}
+2. {step 2}
+
+### Script to Run
+**Script:** `{Django management command or SQLite CLI — this project has no support_scripts/ directory}`
+**Command:** `{exact command}`
+**Target instance:** `{subdomain or instance identifier}`
+**Expected outcome:** {what should happen after running it}
+
+### Affected Instances
+{List any instance subdomains identified from Sentry context or issue body}
+
+### Confidence Level
+{High / Medium / Low} — {justification}
+```
+
+3. **Stop here.** Do not open a PR. Do not generate tests. Skip Steps 9–11.
+
+### Category B — Code PR needed
+Applies when Axis 1 is **Code defect**.
+
+1. Apply GitHub label `sentry-triage-code-fix` to the issue.
+2. Continue to Steps 9–11.
+
+---
+
+## Step 9 — Apply the fix (Category B only)
 
 Rules:
 - Make the **smallest correct change** possible — touch only the crashing function
@@ -105,7 +291,31 @@ Rules:
 
 ---
 
-## Step 7 — Open a Draft Pull Request
+## Step 10 — Generate tests (Category B only)
+
+Follow the instructions in `.github/agents/test-generator.agent.md` exactly.
+
+The test file must be placed in the correct test directory following the
+existing test structure:
+- For `tasks/` app functions: place tests in `tasks/tests.py` (or
+  `tasks/tests/test_<module>.py` if the tests directory already exists)
+
+The tests must cover **at minimum**:
+1. **Crash scenario** — confirm the bug is reproducible before the fix
+   (parametrize with the exact input that triggered the crash)
+2. **Fix scenario** — confirm the fix resolves the crash
+3. **At least one edge case** related to the fix
+
+Follow all conventions from `.github/agents/test-generator.agent.md`:
+- Use `django.test.TestCase` — **no pytest**, no `@pytest.mark.django_db`
+- Use `self.client` for all HTTP requests — no raw view calls
+- Use `setUpTestData` for read-only shared data; `setUp` for mutable data
+- Every test method must have a one-line docstring
+- Focus on HTTP contract and DB side-effects, not implementation details
+
+---
+
+## Step 11 — Open a Draft Pull Request (Category B only)
 
 Create a branch named `fix/sentry-<slug>-${{ github.run_id }}` where `<slug>` is
 the crash title lowercased with spaces and special characters replaced by
@@ -113,7 +323,7 @@ hyphens (max 45 chars for the slug — the run ID will be appended automatically
 
 The PR **must** be a **draft**. Use this description format exactly:
 
-```
+````markdown
 ## 🔴 Sentry Crash Fix
 
 | Field | Value |
@@ -123,6 +333,8 @@ The PR **must** be a **draft**. Use this description format exactly:
 | **Severity** | <level> |
 | **Sentry URL** | [View crash](PASTE_FULL_SENTRY_HTTPS_URL_HERE_NO_ANGLE_BRACKETS) |
 | **Triage issue** | Closes #${{ github.event.issue.number }} |
+| **Source** | {Sentry bot / Manual triage} |
+| **Triage confidence** | {High / Medium / Low — only include for Path B manual issues} |
 
 > **IMPORTANT for Sentry URL**: Replace `PASTE_FULL_SENTRY_HTTPS_URL_HERE_NO_ANGLE_BRACKETS` with the raw full URL exactly as extracted, e.g. `https://demo3n.sentry.io/organizations/...`. Do NOT wrap it in angle brackets `<>`. The format must be exactly `[View crash](https://...)` with no extra parentheses or brackets.
 
@@ -148,15 +360,45 @@ The PR **must** be a **draft**. Use this description format exactly:
 <fixed code>
 ```
 
+## Tests Added
+
+- `<test_file_path>` — crash scenario: {description}
+- `<test_file_path>` — fix scenario: {description}
+- `<test_file_path>` — edge case: {description}
+
 ## Risk Assessment
 
 - **Side effects:** <none or describe>
 - **Edge cases covered:** <list>
 - **Edge cases NOT covered (requires follow-up):** <none or list>
+
+{— Include the following section ONLY if REGRESSION_DETECTED=true —}
+
+## Regression Detection
+
+**Introducing commit:** `{commit_hash}`
+**Author:** @{github_username}
+**Associated PR:** #{pr_number} (if found, otherwise "not found")
+**Date introduced:** {commit date}
+
+**Rollback command:**
+```bash
+git revert {commit_hash}
 ```
+
+**Recommendation:** {Fix forward — explain why} OR {Rollback — explain why}
+````
 
 The `Closes #${{ github.event.issue.number }}` line ensures the triggering
 GitHub issue is auto-closed when the PR is merged.
+
+### Reviewer assignment
+
+Always request review from the GitHub team **`ramya-co/ops-team`**.
+
+Additionally, if `REGRESSION_DETECTED=true`, also request review from the
+individual GitHub user `@{github_username}` identified as the author of the
+regression-introducing commit.
 
 Do NOT merge the PR. Leave it as a draft for the human engineer to review,
 approve, and merge.
