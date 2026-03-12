@@ -1,0 +1,75 @@
+name: Manual Triage Request
+description: Report a crash or error for automated Sentry-style triage
+labels: ["manual-triage"]
+body:
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      description: What kind of issue is this?
+      options:
+        - Bug
+        - Crash
+        - Data Issue
+        - Config Issue
+    validations:
+      required: true
+
+  - type: input
+    id: exception
+    attributes:
+      label: Exception / Error
+      description: Full exception class and message exactly as it appears in the logs or Sentry.
+      placeholder: "e.g. KeyError: 'popular'"
+    validations:
+      required: true
+
+  - type: input
+    id: culprit
+    attributes:
+      label: Culprit
+      description: File path and function name where the crash occurs.
+      placeholder: "e.g. tasks/views.py in index"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this issue?
+      options:
+        - fatal
+        - error
+        - warning
+    validations:
+      required: true
+
+  - type: input
+    id: instance
+    attributes:
+      label: Affected Instance
+      description: Subdomain or identifier of the affected tenant or environment (if applicable).
+      placeholder: "e.g. production / staging / customer-subdomain"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, when, which users are affected, and any relevant context.
+      placeholder: |
+        Describe the crash: what triggers it, how to reproduce it, what the impact is.
+        Include any relevant timestamps, request details, or affected user groups.
+    validations:
+      required: true
+
+  - type: textarea
+    id: stacktrace
+    attributes:
+      label: Stack Trace
+      description: Paste the full stack trace from Sentry or the error logs.
+      render: python
+    validations:
+      required: false

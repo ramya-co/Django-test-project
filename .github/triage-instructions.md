@@ -251,41 +251,76 @@ To verify the fix:
 ## 7 · Manual Issue Template
 
 Human engineers may open a triage issue manually when a crash is not reported
-by the Sentry bot. The agent must recognise the format below and process it
-identically to a Sentry bot issue (with confidence tracking per §2a).
+by the Sentry bot. The **preferred and only supported method** is to use the
+GitHub Issue Form at `.github/ISSUE_TEMPLATE/manual-triage.yml`. When someone
+clicks **New Issue → Manual Triage Request** in the repository, GitHub renders
+a structured form with dropdowns and text inputs and writes the submitted values
+into the issue body automatically in a consistent format.
+
+> ⚠️ The old raw markdown template (with `Type:`, `Exception:`, `Culprit:`
+> inline markers) is **no longer in use**. The GitHub Issue Form replaces it.
+> Do not look for those inline markers when parsing Path B issues.
+
+### Issue Form output format
+
+When the GitHub Issue Form is submitted, the body looks like this:
 
 ```markdown
-## Issue Type
-<!-- Choose one: Bug / Crash / Data Issue / Config Issue -->
-Type: {type}
+### Issue Type
 
-## Exception / Error
-<!-- The full exception class and message, e.g. KeyError: 'ticket_id' -->
-Exception: {ExceptionClass: message}
+Bug
 
-## Culprit
-<!-- File path and function, e.g. tasks/views.py in delete_task -->
-Culprit: {file_path in function_name}
+### Exception / Error
 
-## Severity
-<!-- fatal / error / warning -->
-Severity: {severity}
+KeyError: 'popular'
 
-## Description
-<!-- What happened, when, which instance/subdomain was affected -->
-{free text}
+### Culprit
 
-## Stack Trace (if available)
+tasks/views.py in index
+
+### Severity
+
+error
+
+### Affected Instance
+
+_No response_
+
+### Description
+
+Any request with ?sort=popular raises a KeyError...
+
+### Stack Trace
+
+\`\`\`python
+File "tasks/views.py", line 17, in index
+    order_field = sort_map[sort]
+KeyError: 'popular'
+\`\`\`
 ```
-{paste stack trace here}
-```
-```
 
-**Required markers for detection:** `Type:`, `Exception:`, `Culprit:` — all
-three must be present in the issue body for Path B triage to activate.
+### Field extraction rules
 
-**Partial-data handling:** If any field is missing, triage proceeds with reduced
-confidence. The agent must explicitly state:
+Parse each field by locating its `### {Field Label}` heading and reading the
+content that follows it (up to the next `###` heading or end of body):
+
+| Field heading | Extracted value | Notes |
+|---------------|-----------------|-------|
+| `### Issue Type` | Dropdown value | One of: Bug, Crash, Data Issue, Config Issue |
+| `### Exception / Error` | Single line | Full exception class and message |
+| `### Culprit` | Single line | `file_path in function_name` format; may be `_No response_` if skipped |
+| `### Severity` | Dropdown value | One of: fatal, error, warning |
+| `### Affected Instance` | Single line or `_No response_` | Tenant/environment identifier |
+| `### Description` | Multi-line text | All text between this heading and the next `###` |
+| `### Stack Trace` | Code block | Python code block; may be absent |
+
+**Detection:** Path B triage activates when the issue has the `manual-triage`
+label (applied automatically by the form frontmatter) **or** when the body
+contains all three of `### Exception / Error`, `### Issue Type`, and
+`### Severity` headings.
+
+**Partial-data handling:** If any field value is `_No response_` or absent,
+triage proceeds with reduced confidence. The agent must explicitly state:
 - Which fields were missing
 - What assumptions were made to fill the gaps
 - The overall confidence level (High / Medium / Low) per the rules in Step 2

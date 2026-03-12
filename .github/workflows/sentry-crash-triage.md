@@ -37,18 +37,24 @@ The actor is `sentry-io[bot]` or any value that contains the string `sentry`
 (case-insensitive). Proceed with Path A parsing in Step 2.
 
 ### Path B — Manual issue
-The actor is a human (not a Sentry bot) **and** the issue body contains all
-three of the following marker lines (case-insensitive):
+The actor is a human (not a Sentry bot) **and** the issue body was submitted
+via the **Manual Triage Request** GitHub Issue Form (`.github/ISSUE_TEMPLATE/manual-triage.yml`).
 
-- A line beginning with `Exception:`
-- A line beginning with `Culprit:`
-- A line beginning with `Type:` or `## Issue Type`
+Detect Path B by checking for the label `manual-triage` on the issue **or** by
+checking that the issue body contains **all three** of the following `### ` section
+headers (case-insensitive), which GitHub generates automatically from the form fields:
 
-If all three markers are present, proceed with Path B parsing in Step 2.
+- `### Exception / Error`
+- `### Issue Type`
+- `### Severity`
+
+If the `manual-triage` label is present **or** all three headers are detected,
+proceed with Path B parsing in Step 2.
 
 ### Exit condition
-If the actor is a human **and** the issue body does NOT contain the three
-markers above, post **nothing**, make **no file changes**, and stop immediately.
+If the actor is a human **and** the issue does NOT have the `manual-triage` label
+**and** the three `### ` headers are NOT all present, post **nothing**, make **no
+file changes**, and stop immediately.
 Output the message: `"Issue does not match manual triage template — exiting gracefully."`
 
 ---
@@ -79,17 +85,20 @@ Detailed parsing guidance is in `.github/triage-instructions.md §2a`.
 
 ### Path B — Manual issue parsing
 
-Parse the following structured fields from the issue body using the manual
-template defined in `.github/triage-instructions.md §7`:
+Issues submitted via the GitHub Issue Form produce a structured body where each
+field value appears immediately below its `### {Field Label}` heading. Parse
+fields by locating the heading and reading the content on the line(s) that
+follow it (up to the next `###` heading or end of body).
 
-| Field | Marker in body |
-|-------|---------------|
-| **Issue type** | Line beginning with `Type:` |
-| **Exception** | Line beginning with `Exception:` |
-| **Culprit** | Line beginning with `Culprit:` — format is `file_path in function_name` |
-| **Severity** | Line beginning with `Severity:` |
-| **Description** | Free text under `## Description` |
-| **Stack trace** | Code block under `## Stack Trace (if available)` |
+| Field | Heading to locate in body |
+|-------|---------------------------|
+| **Issue type** | `### Issue Type` — value is the dropdown selection on the next line |
+| **Exception** | `### Exception / Error` — value is the single line below the heading |
+| **Culprit** | `### Culprit` — value is `file_path in function_name` on the next line |
+| **Severity** | `### Severity` — value is the dropdown selection on the next line |
+| **Affected Instance** | `### Affected Instance` — value on the next line (may be `_No response_` if skipped) |
+| **Description** | `### Description` — all text between this heading and the next `###` |
+| **Stack trace** | `### Stack Trace` — the code block between this heading and end of body |
 
 **Missing fields:** If any required field is absent, do NOT refuse to triage.
 Instead, continue with available fields, state the confidence level
