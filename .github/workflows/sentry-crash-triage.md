@@ -5,6 +5,7 @@ on:
 
 bots:
   - sentry-io[bot]
+  - sentry[bot]
 
 engine: copilot
 
@@ -35,15 +36,15 @@ Request** for human review.
 ### Gate 1 — Determine path
 
 The workflow has already been activated by the infrastructure-level bot check
-(`bots: [sentry-io[bot]]` in the workflow frontmatter) or by team-membership
+(`bots: [sentry-io[bot], sentry[bot]]` in the workflow frontmatter) or by team-membership
 check for human reporters. Your job here is only to determine **which path**
 to follow.
 
 Read the full body of issue `${{ github.event.issue.number }}`.
 
 ### Path A — Sentry bot issue
-The issue was opened by `sentry-io[bot]` (i.e. `${{ github.event.issue.user.login }}`
-matches `sentry-io[bot]` or contains `sentry`, case-insensitive), **or** the
+The issue was opened by `sentry-io[bot]` or `sentry[bot]` (i.e. `${{ github.event.issue.user.login }}`
+matches either bot login or contains `sentry`, case-insensitive), **or** the
 body contains a Sentry event URL (`https://sentry.io/`).
 Proceed with Path A parsing in Step 2.
 
