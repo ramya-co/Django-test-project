@@ -1203,13 +1203,30 @@ jobs:
   pre_activation:
     runs-on: ubuntu-slim
     outputs:
-      activated: ${{ steps.check_membership.outputs.is_team_member == 'true' }}
+      activated: ${{ steps.check_membership.outputs.is_team_member == 'true' || steps.check_bot.outputs.is_bot == 'true' }}
       matched_command: ''
     steps:
       - name: Setup Scripts
         uses: github/gh-aw/actions/setup@f1073c5498ee46fec1530555a7c953445417c69b # v0.56.2
         with:
           destination: /opt/gh-aw/actions
+      - name: Check if issue opener is an allowed bot
+        id: check_bot
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          GH_AW_ALLOWED_BOTS: "sentry-io[bot]"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const allowedBots = process.env.GH_AW_ALLOWED_BOTS.split(',').map(b => b.trim());
+            const opener = context.payload.issue.user.login;
+            const isBot = allowedBots.includes(opener);
+            core.setOutput('is_bot', String(isBot));
+            if (isBot) {
+              core.info(`Issue opener "${opener}" is an allowed bot — activating workflow`);
+            } else {
+              core.info(`Issue opener "${opener}" is not in the allowed bots list`);
+            }
       - name: Check team membership for workflow
         id: check_membership
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8

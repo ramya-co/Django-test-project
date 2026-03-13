@@ -3,6 +3,9 @@ on:
   issues:
     types: [opened]
 
+bots:
+  - sentry-io[bot]
+
 engine: copilot
 
 permissions:
@@ -29,25 +32,40 @@ Request** for human review.
 
 ## Step 0 — Detect and validate the issue source
 
-### Gate 1 — Issue opener check (hard stop)
+### Gate 1 — Determine path
 
-Read `${{ github.event.issue.user.login }}`.
+The workflow has already been activated by the infrastructure-level bot check
+(`bots: [sentry-io[bot]]` in the workflow frontmatter) or by team-membership
+check for human reporters. Your job here is only to determine **which path**
+to follow.
 
-The workflow is allowed to proceed for **two** opener types:
+Read the full body of issue `${{ github.event.issue.number }}`.
 
-1. **Sentry bot:** the login is `sentry-io[bot]` **or** the login contains the
-   string `sentry` (case-insensitive).
-2. **Manual triage form:** the issue has the label `manual-triage` **or** the
-   body contains all three of the following `### ` headings (case-insensitive):
-   `### Exception / Error`, `### Issue Type`, `### Severity`.
+### Path A — Sentry bot issue
+The issue was opened by `sentry-io[bot]` (i.e. `${{ github.event.issue.user.login }}`
+matches `sentry-io[bot]` or contains `sentry`, case-insensitive), **or** the
+body contains a Sentry event URL (`https://sentry.io/`).
+Proceed with Path A parsing in Step 2.
 
-If **neither** condition is met, post **nothing**, make **no file changes**,
-and stop immediately.
-Output the message: `"Issue was not opened by a Sentry bot and does not match the manual triage form — exiting gracefully."`
+### Path B — Manual triage form
+The issue was created by a human via the **Manual Triage Request** form
+(`.github/ISSUE_TEMPLATE/manual-triage.yml`).
 
-This is the primary trigger gate. The workflow fires on every newly opened
-issue; this check ensures only genuine Sentry alerts or manual triage requests
-are processed. All other issues are silently ignored.
+Detect Path B by checking for the label `manual-triage` on the issue **or** by
+checking that the body contains **all three** of the following `### ` section
+headers (case-insensitive):
+
+- `### Exception / Error`
+- `### Issue Type`
+- `### Severity`
+
+If the `manual-triage` label is present **or** all three headers are detected,
+proceed with Path B parsing in Step 2.
+
+### Exit condition
+If neither Path A nor Path B criteria are met, post **nothing**, make **no
+file changes**, and stop immediately.
+Output the message: `"Issue does not match any known triage path — exiting gracefully."`
 
 ### Gate 2 — Issue age check (prevent re-triage of old issues)
 
@@ -62,36 +80,7 @@ Output the message: `"Issue was created more than 2 hours ago — skipping to pr
 This guard prevents accidental re-triage when the bot is manually re-assigned
 to an issue that has already been processed.
 
-### Gate 3 — Determine path
 
-Both gates passed. Now read the full body of issue
-`${{ github.event.issue.number }}` to determine which path to follow.
-
-### Path A — Sentry bot issue
-The issue was opened by `sentry-io[bot]` or any actor whose login contains
-the string `sentry` (case-insensitive), **or** the issue body contains a
-Sentry event URL (`https://sentry.io/`).
-Proceed with Path A parsing in Step 2.
-
-### Path B — Manual issue
-The issue was created by a human **and** was submitted via the **Manual
-Triage Request** GitHub Issue Form (`.github/ISSUE_TEMPLATE/manual-triage.yml`).
-
-Detect Path B by checking for the label `manual-triage` on the issue **or** by
-checking that the issue body contains **all three** of the following `### `
-section headers (case-insensitive):
-
-- `### Exception / Error`
-- `### Issue Type`
-- `### Severity`
-
-If the `manual-triage` label is present **or** all three headers are detected,
-proceed with Path B parsing in Step 2.
-
-### Exit condition
-If neither Path A nor Path B criteria are met, post **nothing**, make **no
-file changes**, and stop immediately.
-Output the message: `"Issue does not match any known triage path — exiting gracefully."`
 
 ---
 
