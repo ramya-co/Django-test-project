@@ -18,6 +18,11 @@ safe-outputs:
   create-pull-request:
   add-comment:
   add-labels:
+    allowed:
+      - sentry-triage-agent
+  add-reviewer:
+    reviewers:
+      - ramyan-hf
 ---
 
 # Sentry Crash Auto-Triage
@@ -43,7 +48,7 @@ to follow.
 Read the full body of issue `${{ github.event.issue.number }}`.
 
 ### Path A — Sentry bot issue
-The issue was opened by `sentry-io[bot]` or `sentry[bot]` (i.e. `${{ github.event.issue.user.login }}`
+The issue was opened by `sentry-io[bot]` or `sentry[bot]` (i.e. `${{ github.actor }}`
 matches either bot login or contains `sentry`, case-insensitive), **or** the
 body contains a Sentry event URL (`https://sentry.io/`).
 Proceed with Path A parsing in Step 2.
@@ -70,7 +75,10 @@ Output the message: `"Issue does not match any known triage path — exiting gra
 
 ### Gate 2 — Issue age check (prevent re-triage of old issues)
 
-Read `${{ github.event.issue.created_at }}`.
+Fetch the `created_at` timestamp for issue `${{ github.event.issue.number }}` by running:
+```bash
+gh issue view ${{ github.event.issue.number }} --json createdAt --jq '.createdAt'
+```
 Compute the elapsed time between the issue's `created_at` timestamp and the
 current UTC time.
 
@@ -454,4 +462,17 @@ regression-introducing commit.
 
 Do NOT merge the PR. Leave it as a draft for the human engineer to review,
 approve, and merge.
+
+---
+
+## Step 12 — Apply PR Label and Assign Reviewer
+
+After the PR is created, load and follow the reviewer assignment skill.
+
+1. Read `.github/skills/reviewer-assignment.md` in full. This is an
+   autonomous CI run — do not pause, do not ask for confirmation, and
+   do not wait for input. Execute all steps in it immediately.
+
+2. You already know which files you modified to produce the fix. Use
+   that list directly — do not re-scan the repo.
 
