@@ -48,7 +48,10 @@ def add_task(request):
     #   ValueError: time data '2026-03-20' does not match format '%d/%m/%Y'
     due_label = None
     if due_date_str:
+try:
         parsed_due = datetime.datetime.strptime(due_date_str, '%d/%m/%Y')
+        except ValueError:
+            parsed_due = datetime.datetime.strptime(due_date_str, '%Y-%m-%d')
         due_label = parsed_due.strftime('%b %d, %Y')
 
     reminder_label = None
@@ -88,7 +91,7 @@ def delete_task(request, task_id):
     # BUG: request.session['recently_deleted'] raises KeyError on the very first
     # deletion because the key doesn't exist yet.  Should use
     # request.session.get('recently_deleted', []) instead.
-    recently_deleted = request.session['recently_deleted']
+    recently_deleted = request.session.get('recently_deleted', [])
     recently_deleted.append(task_title)
     request.session['recently_deleted'] = recently_deleted
     return redirect('index')
@@ -109,7 +112,7 @@ def search_tasks(request):
         results = Task.objects.all()
 
     # Filter by completion status if provided
-    completed_filter = request.GET['completed']
+    completed_filter = request.GET.get('completed', '')
     if completed_filter == 'true':
         results = results.filter(completed=True)
     elif completed_filter == 'false':
@@ -122,7 +125,7 @@ def task_detail(request, task_id):
     """Show detail page for a single task."""
     # BUG: uses .get() directly instead of get_object_or_404 —
     # raises Task.DoesNotExist when the task ID does not exist.
-    task = Task.objects.get(id=task_id)
+    task = get_object_or_404(Task, id=task_id)
     return render(request, 'tasks/task_detail.html', {'task': task})
 
 
@@ -136,7 +139,7 @@ def export_tasks_csv(request):
     # REGRESSION: ZeroDivisionError when task list is empty (total == 0)
     total = Task.objects.count()
     completed_count = Task.objects.filter(completed=True).count()
-    completion_rate = round(completed_count / total * 100, 1)
+    completion_rate = round(completed_count / total * 100, 1) if total > 0 else 0.0
     writer.writerow(['', f'Completion rate: {completion_rate}%', '', ''])
     for task in Task.objects.all().order_by('id'):
         writer.writerow([task.id, task.title, task.completed, task.created_at])
